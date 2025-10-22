@@ -1,12 +1,11 @@
-
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Created on Thu Jul 17 08:38:42 2025
-
-@author: Ron
+Created on Tue Oct 21 23:07:37 2025
+ptLAST LAST analysis functions package
+Packs all of Rons functions into one package
+@author: micha
 """
-
 import pandas as pd
 import numpy as np
 import os, sys
@@ -14,7 +13,7 @@ from datetime import datetime, timedelta
 from openpyxl import load_workbook
 import json
 import math
-import csv
+# import csv
 import time
 import matplotlib.pyplot as plt
 from sklearn.linear_model import LinearRegression
@@ -24,32 +23,16 @@ from scipy.stats import gaussian_kde
 from sklearn.preprocessing import StandardScaler
 import matplotlib.ticker as ticker
 import matplotlib.lines as mlines
-from collections import deque
-from io import StringIO
+# from collections import deque
+# from io import StringIO
 import subprocess
-import argparse
+# import argparse
 import seaborn as sns
-
-#For use offline (at home) one can use csv files as the source instead of the clickhouse dB
-use_csv=False
-if not use_csv:
-    import clickhouse_connect
-    from clickhouse_driver import Client
-    
-    # select the computer from which to run: LAST_0 or euclid
-    # database = 'euclid' #'LAST_0'  # 'euclid'
-    database = 'LAST_0' #'LAST_0'  # 'euclid'
-    if database == 'LAST_0':
-        # LAST_0 as client using clickhouse_connect
-        client = clickhouse_connect.get_client(host='10.23.1.25', port=8123, \
-                 username='last_user', password='physics', database='observatory_operation')        
-    elif database == 'euclid':
-        # euclid as client using clickhouse_driver
-        client = Client(host='euclid', port=9000, \
-                 user='last_user', password='physics', database='observatory_operation')        
+import clickhouse_connect
+from clickhouse_driver import Client
 
 
-def read_DB(N_days, N_read, dB_name, rediskey_prefix, extra=None):
+def read_DB(N_days, N_read, databaseLocation,dB_name, rediskey_prefix, extra=None):
     '''A general function for reading a given range of days from dB_name 
     looking for rediskey prefix. Note, the extra parameter is not mandatory and
     is used to add another condition 
@@ -59,6 +42,14 @@ def read_DB(N_days, N_read, dB_name, rediskey_prefix, extra=None):
     examples of rediskey_prefix are: 'unitCS.set.FocusData:', 'XerxesMountBinary.get.Dec', 
     'XerxesMountBinary.get.Status'. An example of extra is: "value LIKE 'tracking'",
     "value like '%LoopCompleted%:%true%' "   '''
+    if databaseLocation == 'LAST_0':
+        # LAST_0 as client using clickhouse_connect
+        client = clickhouse_connect.get_client(host='10.23.1.25', port=8123, \
+                 username='last_user', password='physics', database='observatory_operation')        
+    elif databaseLocation == 'euclid':
+        # euclid as client using clickhouse_driver
+        client = Client(host='euclid', port=9000, \
+                 user='last_user', password='physics', database='observatory_operation') 
     if N_read == -1: N_read=N_days
     query_string = build_range_query(N_days, N_read, dB_name, rediskey_prefix,extra)
     print(query_string)
@@ -2000,296 +1991,3 @@ def plot_alt_vs_hour(focus_groups):
     label = str('focus')
     plot_saving(output_directory, filename, label)
     plt.show()
-
-#%%
-'''=============MAIN============================================================='''    
-
-N_days = 3  #This is the total number of days to analyze
-N_show = 1  #-1 for all, N_show smaller than N_days allows to see older data
-'''example 3,1 will show only 1 day that occured 3 days ago
-           2,1 same but for the day before yesterday
-           1,1 is yesterday'''
-
-parser = argparse.ArgumentParser()
-parser.add_argument("--N_days", type=str, help="last N days to process")
-parser.add_argument("--N_show", type=int, help="N days to show from oldest")
-args = parser.parse_args()
- 
-# Use provided argument if given, else default
-N_days = int(args.N_days) if args.N_days is not None else N_days
-N_show = int(args.N_show) if args.N_show is not None else N_show
-
-print(f"N_days: {N_days}, N_show: {N_show}\n")
-
-'''The following block allows the user to select which types of analysis
-are performed and which plots to show. The plot numbers on the right 
-correspond to the number in the detailed description of the program'''
-tracking_analysis = True
-plot_RA_Dec_std = False                     #(1),(2)
-plot_RA_Dec = False                          #(3)
-FWHM_analysis = True
-focus_analysis = True
-plot_FWHM_RA_Dec_focus = True               #(4)
-plot_FWHM_no_filter = True                  #(5)
-plot_fraction_bad_focus = True              #(6)
-Temp_analysis = True
-plot_Focus_temperature_slope = True         #(7)
-plot_Focus_distribution_and_median = False   #(8)
-plot_Alt_for_each_Focus = True              #(9)
-plot_number_of_jumps = True                 #(10)
-plot_correlation_jumps_Az_Alt = True        #(11)
-plot_mean_FWHM = False                       #(12)
-plot_KDE_delta_Minor = True                 #(13)
-
-
-'''There are 3 options to run fit 1. regular (True), 2. fixes slope = 18, fit only offset (False),
-3. use 4 parameter constraints: lower, upper limits + initial slope + weight (False and constraints given)'''
-regular_fit = False    # if false, and constraints not given, applies slope=18 and fits only intercept or if constraints is not empty:
-constraints =(10., 23., 16., 0.1)   #first 2 are the rigid slope limits, the third is the center and the 4th is the weight
-
-
-#input_path = r'/home/ron/Documents/python/Astro/Read_DB/August_September' # home 
-# input_path = r'/home/ocs/Documents/read_DB/Aug_Sep_LAST_0' #work
-input_path = r'/home/micha/Dropbox/WAO/LAST_analysis/input_dir'
-
-'''-------------------  USE CSV   ------------------------------
-The following section includes parameters for reading from csv instead of clickhouse'''
-#use_csv = True  #usually False, at home, I set this to true to be able to analyze off-line
-# the next 2 parameters are used to speed up the reading of csv files, when possible
-fraction_to_read = 0.5
-start_reading_at_frac = 0.0 #larger fraction is earlier
-# When using csv, here are the 7 filenames to be read
-file_FWHM  = 'FWHM_August_September.csv'
-file_focus = 'Focus_August_September.csv'
-file_tracking = 'Mount_status_August_September.csv'
-file_RA = 'RA_August_September.csv'
-file_Dec = 'Dec_August_September.csv'
-file_Az = 'Az_August_September.csv'
-file_Alt = 'Alt_August_September.csv'
-file_Temp_1 = 'Temperature_1_August_September.csv'
-file_Temp_2 = 'Temperature_2_August_September.csv'
-input_file_FWHM = os.path.join(input_path, file_FWHM)    # generates an absolute path
-input_file_focus = os.path.join(input_path, file_focus)
-input_file_tracking = os.path.join(input_path, file_tracking) 
-input_file_RA = os.path.join(input_path, file_RA)
-input_file_Dec = os.path.join(input_path, file_Dec)
-input_file_Az = os.path.join(input_path, file_Az)
-input_file_Alt = os.path.join(input_path, file_Alt)
-input_file_Temp_1 = os.path.join(input_path, file_Temp_1)
-input_file_Temp_2 = os.path.join(input_path, file_Temp_2)
-
-'''--------------------------------------------------------------'''
-
-if use_csv:
-    output_directory = os.path.join(input_path,('output_' + 
-                   str(os.path.splitext(file_FWHM)[0])+ '_' + 
-                   datetime.now().strftime("%H-%M")))
-else:
-    output_directory = os.path.join(input_path,('output_' + 
-                   str(N_days) + '_' + str(N_show) + 
-                   '_' + datetime.now().strftime("%H-%M")))
-os.makedirs(output_directory, exist_ok=True)    # Create the output directory if it doesn't exist
-file_short = os.path.splitext(file_focus)[0]
-
-if use_csv: print('\n', 'opened file: ', file_short, '\n') 
-else: print('Reading from DB \n')
-t0 = pd.Timestamp("1970-01-01T00:00:00")
-
-# --- Start capturing and logging console output---
-logger = DualLogger(os.path.join(output_directory,"output_log.txt")) #needs to open a new one for each output_directory
-# The following colors are globally used for 4 traces (4 scopes) and for 10 mounts
-colors = ['red', 'green', 'blue', 'purple']
-colors_mounts = {"1": "red", "2": "green", "3": "blue", "4": "brown", "5": "pink", "6": "gray",    \
-          "7": "purple", "8": "orange", "9": "olive", "10": "cyan"}  # per mount   
-
-# %%
-'''=================== Loading Data Cell ======================================'''
-# Start timer
-tic = time.time()
-if tracking_analysis:
-    if use_csv:
-        tracking = load_tracking_csv(input_file_tracking, fraction_to_read, start_reading_at_frac)
-    else:
-        tracking = read_DB(N_days,N_show,'operation_strings', 'XerxesMountBinary.get.Status', "value LIKE 'tracking'" )
-        #tracking = read_DB(N_days,N_show,'operation_strings', 'XerxesMountBinary.get.Status' )
-    if tracking.empty:
-        print('There are NO observations during your requested interval - stopping')
-        sys.exit()
-    tracking = filter_N_days(basic_processing_tracking(tracking), N_days, N_show)
-    tracking_groups = tracking_windows(separate_by_mount(tracking)) 
-    if use_csv:
-        df_RA = load_tracking_csv(input_file_RA, fraction_to_read, start_reading_at_frac)
-    else:
-        df_RA = read_DB(N_days,N_show,'operation_numbers', 'XerxesMountBinary.get.RA')
-    df_RA = filter_N_days(basic_processing_tracking(df_RA), N_days, N_show) 
-    RA_groups = separate_by_mount(df_RA)
-    if use_csv:
-        df_Dec = load_tracking_csv(input_file_Dec, fraction_to_read, start_reading_at_frac)
-    else:
-        df_Dec = read_DB(N_days,N_show,'operation_numbers', 'XerxesMountBinary.get.Dec')
-    df_Dec = filter_N_days(basic_processing_tracking(df_Dec), N_days, N_show)
-    Dec_groups = separate_by_mount(df_Dec)
-    if use_csv:
-        df_Az = load_tracking_csv(input_file_Az, fraction_to_read, start_reading_at_frac)
-    else:
-        df_Az = read_DB(N_days,N_show,'operation_numbers', 'XerxesMountBinary.get.Az')
-    df_Az = filter_N_days(basic_processing_tracking(df_Az), N_days, N_show)
-    Az_groups = separate_by_mount(df_Az)
-    if use_csv:
-        df_Alt = load_tracking_csv(input_file_Alt, fraction_to_read, start_reading_at_frac)
-    else:
-        df_Alt = read_DB(N_days,N_show,'operation_numbers', 'XerxesMountBinary.get.Alt')
-    df_Alt = filter_N_days(basic_processing_tracking(df_Alt), N_days, N_show)
-    Alt_groups = separate_by_mount(df_Alt)
-
-# %% 
-if FWHM_analysis:
-    if use_csv:
-        df_FWHM = load_FWHM_csv(input_file_FWHM, fraction_to_read, start_reading_at_frac)
-    else:
-        df_FWHM = read_DB(N_days,N_show,'operation_strings', 'camera.set.FWHMellipse:')
-    if df_FWHM.empty:
-        print('There are NO observations during your requested interval - stopping')
-        sys.exit()  
-    df_FWHM = filter_N_days(basic_processing_FWHM(df_FWHM), N_days, N_show)
-    df_FWHM, empty_cols = filter_columns_by_nan_or_empty_lists(df_FWHM, 0.5) 
-                    #optional 2nd param: frac determines threshold from total rows (0.1)
-    print('empty columns removed:', empty_cols)
-    FWHM_groups = separate_by_mount(df_FWHM)
-   
-
-if focus_analysis:
-    if use_csv:
-        df_focus = load_FWHM_csv(input_file_focus, fraction_to_read, start_reading_at_frac)
-    else: 
-        df_focus = read_DB(N_days,N_show,'operation_strings', 'unitCS.set.FocusData:', "value like '%LoopCompleted%:%true%' ")
-    if df_focus.empty:
-        print('There are NO focusings during your requested interval - stopping')
-        sys.exit()
-    df_focus = filter_N_days(basic_processing_FWHM(df_focus), N_days, N_show)
-    df_focus["time"] = pd.to_datetime(df_focus["time"], errors="coerce")
-    df_focus = df_focus.sort_values(by=[df_focus.index.name, "TimeStarted"])
-    if tracking_analysis:
-        df_focus = add_Alt_to_focus(df_focus, df_Alt)
-    focus_groups = separate_by_mount(df_focus)
-
-# %% 
-if Temp_analysis:    
-    if use_csv:
-        df_Temp_1 = load_tracking_csv(input_file_Temp_1, fraction_to_read, start_reading_at_frac)
-    else:
-        df_Temp_1 = read_DB(N_days,N_show,'operation_numbers', 'unitCS.get.Temperature:', "endsWith(rediskey, '.1')")     
-    df_Temp_1 = filter_N_days(basic_processing_tracking(df_Temp_1), N_days, N_show)
-    df_Temp_1_groups = separate_by_mount(df_Temp_1)
-    
-    if use_csv:
-        df_Temp_2 = load_tracking_csv(input_file_Temp_2, fraction_to_read, start_reading_at_frac)
-    else:
-        df_Temp_2 = read_DB(N_days,N_show,'operation_numbers', 'unitCS.get.Temperature:', "endsWith(rediskey, '.2')")     
-    df_Temp_2 = filter_N_days(basic_processing_tracking(df_Temp_2), N_days, N_show)
-    df_Temp_2_groups = separate_by_mount(df_Temp_2)
-    df_Temp_groups = []
-    for i in range(10):
-        df_Temp_1_groups[i].drop('scope',axis=1) # for the temperatures, we don't have scope info only mount
-        df_Temp_2_groups[i].drop('scope',axis=1) # for the temperatures, we don't have scope info only mount
-        '''Fill df_Temp_groups with the data of the smoother temperature sensor {1 or 2} for each mount'''
-        df_Temp_groups.append(smoother_df(df_Temp_1_groups[i],df_Temp_2_groups[i], col="value"))
-
-# End timer
-toc = time.time()
-print(f"\nElapsed time: {toc - tic:.3f} seconds")
-print('\nfinished loading data')
-
-# %%   
-'''==================== Analysis of  tracking  ============================== '''
-if tracking_analysis:
-    
-    if use_csv: tracking_groups = filter_groups_N_days(tracking_groups, N_days, N_show)
-    tracking_results_groups = analyze_tracking(tracking_groups, RA_groups, Dec_groups, Az_groups, Alt_groups)
-    #Note, in tracking_results the std values are already in arcsec
-
-    if plot_RA_Dec_std:    
-        plot_tracking_results_1(tracking_results_groups) #tracking std vs hour
-    if plot_RA_Dec:
-        plot_tracking_results_2(tracking_results_groups) #RA and Dec vs hour
-
-    '''count the number of active observation days'''
-    indexes = find_noon_rollover_indexes(tracking)
-    print('The analysis includes', len(indexes), ' days')
-    temp = indexes[1:] + [indexes[-1]]
-    N=300  #minimum number of observations per night
-    print('Number of days with active observations: ', np.sum(np.diff(indexes) > N)+1)
-    print('finished tracking analysis')
-# %%
-'''==================== Analysis of  FWHM  + tracking  ======================== '''
-if FWHM_analysis:
-    #filter out empty columns, can also filter only NaN  'filter_columns_by_nan(df, N)'
-    if use_csv: FWHM_groups = filter_groups_N_days(FWHM_groups, N_days, N_show)
-    if tracking_analysis:
-        tracking_results_groups = insert_FWHM_into_tracking_results_groups(tracking_results_groups, FWHM_groups)
-        '''For analysis of FWHM of images'''
-        #plot_bestpos_vs_temp_by_mount(df_FWHM, x_axis='TimeStarted', y_axis='minor')
-        if plot_FWHM_RA_Dec_focus:
-            plot_tracking_results_3(tracking_results_groups, focus_groups) #FWHM (Left) RA and Dec (right) vs hour + focusings as v-lines
-    if plot_FWHM_no_filter:
-        plot_FWHM(FWHM_groups)
-    
-    print('finished FWHM analysis')     
-    
-    '''Add Temperature columns to tracking_results_groups'''
-if Temp_analysis:
-    tracking_results_groups = add_temp_medians(tracking_results_groups, df_Temp_groups)
-
-# %%
-if plot_fraction_bad_focus:
-    plot_bad_fit_fraction(df_focus)
-#plot_bad_fraction_per_day(final_df)
-
-if focus_analysis:
-    '''Create a filtered df_focus that only has data before 19:00'''
-    # Extract hour (first two chars before '-')
-    df_focus = df_focus.dropna(subset=['HH-MM-DD-mm'])   # this protects agains nan in the following line
-    df_focus["hour"] = df_focus["HH-MM-DD-mm"].str.split("_").str[0].astype(int)
-    # Keep only rows where 16 < hour < 19
-    df_focus_filtered = df_focus[(df_focus["hour"] > 15) & (df_focus["hour"] < 19)].drop(columns="hour")
-
-    
-    '''#For analysis of focus quality'''
-    if use_csv:
-        if plot_Focus_temperature_slope:
-            plot_bestpos_vs_temp_by_mount(filter_N_days(df_focus, N_days, N_show), x_axis='Temperature', y_axis='BestPos')
-    else:
-        if plot_Focus_temperature_slope:
-            df_medians = plot_bestpos_vs_temp_by_mount(df_focus, x_axis='Temperature', y_axis='BestPos')
-    if plot_Alt_for_each_Focus:
-        plot_alt_vs_hour(focus_groups) #plots the Alt at which focus was performed for each mount vs time
-
-    print('finished focus analysis')
-
-    '''Create csv of data for Eran + plot histograms dMinor/dTemp and Delta_Major'''
-    if tracking_analysis:        
-        focus_times = get_focus_windows(df_focus,1200,50000) #get time_windows between adjacent focusings for each scope
-        #focus_times = get_focus_windows(df_focus)
-        focus_times = append_temperature_deltas(focus_times, max_dT=0.5)
-       
-        combined, jumps = get_minor_series(focus_times, tracking_results_groups)
-        threshold_jump_count = 0.7
-        n_jumps = (jumps["jump_minor"].abs() > 0.7).sum()
-        print(f'total number of jumps >{threshold_jump_count}: {n_jumps}')
-        combined.to_csv(os.path.join(output_directory,"combined.csv"))
-        if FWHM_analysis:
-            jumps.to_csv(os.path.join(output_directory,"jumps.csv"))
-            if plot_number_of_jumps:
-                plot_jumps(jumps)
-            if plot_correlation_jumps_Az_Alt:
-                plot_jumps_2(jumps)
-            
-            if plot_mean_FWHM: 
-                all = mount_scope_medians(FWHM_groups)    
-            
-            if plot_KDE_delta_Minor:
-                for i in range(10):   
-                    col_name = 'delta_Minor' #dMinor_dT'   #
-                    plot_KDE(combined, i+1, col_name, scopes=[1,2,3,4], bw_adjust=1)
-                #     col_name = 'dMinor_dT'   #
-                #     plot_KDE(combined, i+1, col_name, scopes=[1,2,3,4], bw_adjust=1)
