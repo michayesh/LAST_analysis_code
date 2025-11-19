@@ -31,22 +31,27 @@ import argparse
 import seaborn as sns
 
 #For use offline (at home) one can use csv files as the source instead of the clickhouse dB
-use_csv=False
+use_csv= False
 if not use_csv:
     import clickhouse_connect
     from clickhouse_driver import Client
     
     # select the computer from which to run: LAST_0 or euclid
-    # database = 'euclid' #'LAST_0'  # 'euclid'
-    database = 'LAST_0' #'LAST_0'  # 'euclid'
+    database = 'euclid' #'LAST_0'  # 'euclid'
+    # euclid = '10.150.28.18'
+    euclidhost = '10.150.28.18'
+    euclidport = 9000
+    eucliduser ='default'
+    euclidpw = 'PassRoot'
     if database == 'LAST_0':
         # LAST_0 as client using clickhouse_connect
         client = clickhouse_connect.get_client(host='10.23.1.25', port=8123, \
                  username='last_user', password='physics', database='observatory_operation')        
     elif database == 'euclid':
         # euclid as client using clickhouse_driver
-        client = Client(host='euclid', port=9000, \
-                 user='last_user', password='physics', database='observatory_operation')        
+       
+        client = Client(host=euclidhost, port=euclidport, \
+                 user=eucliduser, password=euclidpw, database='observatory_operation')        
 
 
 def read_DB(N_days, N_read, dB_name, rediskey_prefix, extra=None):
@@ -913,6 +918,7 @@ def plot_bestpos_vs_temp_by_mount(df, x_axis:str, y_axis:str):
     Different symbols are given for the first 12 days in a run. The first 2 hrs of 
     observations are excluded (to reduce noise)
     """   
+
     data_for_distribution_plot = []
     if y_axis =='minor': 
         dt = np.diff(df[x_axis])
@@ -1082,7 +1088,8 @@ def plot_bestpos_vs_temp_by_mount(df, x_axis:str, y_axis:str):
 
     fig.suptitle(title, fontsize=18, y=1.02)
     plt.tight_layout()
-    filename = f'BestPos_vs_Temp_fits {earliest_time}-{latest_time}'
+    #filename = f'BestPos_vs_Temp_fits {earliest_time}-{latest_time}'
+    filename = f'{y_axis}_vs_{x_axis} {earliest_time}-{latest_time}'
     label = str('focus')
     plot_saving(output_directory, filename, label)
     plt.show()
@@ -2001,10 +2008,10 @@ def plot_alt_vs_hour(focus_groups):
     plot_saving(output_directory, filename, label)
     plt.show()
 
-#%%
+
 '''=============MAIN============================================================='''    
 
-N_days = 3  #This is the total number of days to analyze
+N_days =4  #This is the total number of days to analyze
 N_show = 1  #-1 for all, N_show smaller than N_days allows to see older data
 '''example 3,1 will show only 1 day that occured 3 days ago
            2,1 same but for the day before yesterday
@@ -2038,25 +2045,25 @@ plot_Focus_distribution_and_median = False   #(8)
 plot_Alt_for_each_Focus = True              #(9)
 plot_number_of_jumps = True                 #(10)
 plot_correlation_jumps_Az_Alt = True        #(11)
-plot_mean_FWHM = False                       #(12)
+plot_mean_FWHM = True                       #(12)
 plot_KDE_delta_Minor = True                 #(13)
 
 
 '''There are 3 options to run fit 1. regular (True), 2. fixes slope = 18, fit only offset (False),
 3. use 4 parameter constraints: lower, upper limits + initial slope + weight (False and constraints given)'''
 regular_fit = False    # if false, and constraints not given, applies slope=18 and fits only intercept or if constraints is not empty:
-constraints =(10., 23., 16., 0.1)   #first 2 are the rigid slope limits, the third is the center and the 4th is the weight
+constraints =(-20., 23., 16., 0.1)   #first 2 are the rigid slope limits, the third is the center and the 4th is the weight
 
 
 #input_path = r'/home/ron/Documents/python/Astro/Read_DB/August_September' # home 
-# input_path = r'/home/ocs/Documents/read_DB/Aug_Sep_LAST_0' #work
-input_path = r'/home/micha/Dropbox/WAO/LAST_analysis/input_dir'
+input_path = r'/home/ocs/Documents/read_DB/Aug_Sep_LAST_0' #work
+
 
 '''-------------------  USE CSV   ------------------------------
 The following section includes parameters for reading from csv instead of clickhouse'''
 #use_csv = True  #usually False, at home, I set this to true to be able to analyze off-line
 # the next 2 parameters are used to speed up the reading of csv files, when possible
-fraction_to_read = 0.5
+fraction_to_read = 0.1
 start_reading_at_frac = 0.0 #larger fraction is earlier
 # When using csv, here are the 7 filenames to be read
 file_FWHM  = 'FWHM_August_September.csv'
@@ -2085,9 +2092,10 @@ if use_csv:
                    str(os.path.splitext(file_FWHM)[0])+ '_' + 
                    datetime.now().strftime("%H-%M")))
 else:
-    output_directory = os.path.join(input_path,('output_' + 
-                   str(N_days) + '_' + str(N_show) + 
-                   '_' + datetime.now().strftime("%H-%M")))
+    # output_directory = os.path.join(input_path,('output_' + 
+    #                str(N_days) + '_' + str(N_show) + 
+    #                '_' + datetime.now().strftime("%H-%M")))
+    output_directory = r'/home/micha/Dropbox/WAO/LAST_analysis'
 os.makedirs(output_directory, exist_ok=True)    # Create the output directory if it doesn't exist
 file_short = os.path.splitext(file_focus)[0]
 
@@ -2106,6 +2114,7 @@ colors_mounts = {"1": "red", "2": "green", "3": "blue", "4": "brown", "5": "pink
 '''=================== Loading Data Cell ======================================'''
 # Start timer
 tic = time.time()
+print('started queries\n ***********************\n')
 if tracking_analysis:
     if use_csv:
         tracking = load_tracking_csv(input_file_tracking, fraction_to_read, start_reading_at_frac)
@@ -2144,6 +2153,7 @@ if tracking_analysis:
 
 # %% 
 if FWHM_analysis:
+    print('reading FWHM analysis')
     if use_csv:
         df_FWHM = load_FWHM_csv(input_file_FWHM, fraction_to_read, start_reading_at_frac)
     else:
@@ -2249,18 +2259,34 @@ if focus_analysis:
     '''Create a filtered df_focus that only has data before 19:00'''
     # Extract hour (first two chars before '-')
     df_focus = df_focus.dropna(subset=['HH-MM-DD-mm'])   # this protects agains nan in the following line
-    df_focus["hour"] = df_focus["HH-MM-DD-mm"].str.split("_").str[0].astype(int)
+    #df_focus["hour"] = df_focus["HH-MM-DD-mm"].str.split("_").str[0].astype(int)
+    df_focus['hour'] = df_focus['HH-MM-DD-mm'].str.split('_').str[0].astype(float) + df_focus['HH-MM-DD-mm'].str.split('_').str[1].astype(float)/60.
+    df_focus['adjusted_hour'] = df_focus['hour']
+    df_focus.loc[df_focus['hour'] < 5, 'adjusted_hour'] += 24
     # Keep only rows where 16 < hour < 19
     df_focus_filtered = df_focus[(df_focus["hour"] > 15) & (df_focus["hour"] < 19)].drop(columns="hour")
+    # make sure Temperature is numeric
+    df_focus['Temperature'] = pd.to_numeric(df_focus['Temperature'], errors='coerce')
+    df_focus['BestPos'] = pd.to_numeric(df_focus['BestPos'], errors='coerce')
+    
+    # compute delta_Temperature per mount.scope group (index)
+    df_focus['delta_Temperature'] = df_focus.groupby(df_focus.index)['Temperature']   \
+                                    .transform(lambda x: x - x.iloc[0])
+    # create BestPos_Temp as BestPos + delta_Temperature * 18
+    df_focus['BestPos_Temp'] = df_focus['BestPos'] - df_focus['delta_Temperature'] * 18
 
     
     '''#For analysis of focus quality'''
     if use_csv:
         if plot_Focus_temperature_slope:
-            plot_bestpos_vs_temp_by_mount(filter_N_days(df_focus, N_days, N_show), x_axis='Temperature', y_axis='BestPos')
+            df_medians = plot_bestpos_vs_temp_by_mount(filter_N_days(df_focus, N_days, N_show), x_axis='Temperature', y_axis='BestPos')
+            temp = plot_bestpos_vs_temp_by_mount(filter_N_days(df_focus, N_days, N_show), x_axis='adjusted_hour', y_axis='BestPos')
+            temp2 =plot_bestpos_vs_temp_by_mount(filter_N_days(df_focus, N_days, N_show), x_axis='adjusted_hour', y_axis='BestPos_Temp')
     else:
         if plot_Focus_temperature_slope:
             df_medians = plot_bestpos_vs_temp_by_mount(df_focus, x_axis='Temperature', y_axis='BestPos')
+            temp = plot_bestpos_vs_temp_by_mount(filter_N_days(df_focus, N_days, N_show), x_axis='adjusted_hour', y_axis='BestPos')
+            temp2 =plot_bestpos_vs_temp_by_mount(filter_N_days(df_focus, N_days, N_show), x_axis='adjusted_hour', y_axis='BestPos_Temp')
     if plot_Alt_for_each_Focus:
         plot_alt_vs_hour(focus_groups) #plots the Alt at which focus was performed for each mount vs time
 

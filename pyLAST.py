@@ -28,38 +28,74 @@ import matplotlib.lines as mlines
 import subprocess
 # import argparse
 import seaborn as sns
-import clickhouse_connect
+# import clickhouse_connect
 from clickhouse_driver import Client
+from pydantic import BaseModel
+# A constant used in several funcions
+t0 = pd.Timestamp("1970-01-01T00:00:00")
+# The following colors are globally used for 4 traces (4 scopes) and for 10 mounts
+colors = ['red', 'green', 'blue', 'purple']
+colors_mounts = {"1": "red", "2": "green", "3": "blue", "4": "brown", "5": "pink", "6": "gray",    \
+          "7": "purple", "8": "orange", "9": "olive", "10": "cyan"}  # per mount   
 
+class LastDatabase(BaseModel):
+    """
+    Defines a LAST database class
+    with properties: 
+        name - string
+        host = host ip string
+        port = port num integer
+        user = user name string
+        pw = password string
+    
+    """
+    name:str = None
+    host:str = None
+    port:int = None
+    user:str = None
+    pw:str = None
+    operdb:str = None
+    
+    def connect(self):
+        client = Client(host=self.host, port=self.port, user=self.user,
+                        password=self.pw, database= self.operdb)  
+        return client
+    # def __init__(self,name: str,host:str,port:int,user:str,pw:str):
+    #     self.name = None
+    #     self.host = None
+        
 
-def read_DB(N_days, N_read, databaseLocation,dB_name, rediskey_prefix, extra=None):
-    '''A general function for reading a given range of days from dB_name 
+def read_DB(N_days, N_read, client, dB_name, rediskey_prefix, extra=None):
+    '''A general function for reading a given range of days from databse (dictionary with database details)
     looking for rediskey prefix. Note, the extra parameter is not mandatory and
-    is used to add another condition 
-    N_days is the number of days before present to search for
-    N_read limits the search to N_read days after the initial day, set to -1 for all
-    dB_name is either operation_strings or operation_numbers
-    examples of rediskey_prefix are: 'unitCS.set.FocusData:', 'XerxesMountBinary.get.Dec', 
-    'XerxesMountBinary.get.Status'. An example of extra is: "value LIKE 'tracking'",
-    "value like '%LoopCompleted%:%true%' "   '''
-    if databaseLocation == 'LAST_0':
-        # LAST_0 as client using clickhouse_connect
-        client = clickhouse_connect.get_client(host='10.23.1.25', port=8123, \
-                 username='last_user', password='physics', database='observatory_operation')        
-    elif databaseLocation == 'euclid':
-        # euclid as client using clickhouse_driver
-        client = Client(host='euclid', port=9000, \
-                 user='last_user', password='physics', database='observatory_operation') 
+    is used to add another condition
+    parameters:
+        N_days is the number of days before present to search for
+        N_read limits the search to N_read days after the initial day, set to -1 for all
+        database - a datbase object with name, host ip, port username, pasword and datbase
+        dB_name is either operation_strings or operation_numbers
+        rediskey prefix - 
+        examples of rediskey_prefix are: 'unitCS.set.FocusData:', 'XerxesMountBinary.get.Dec', 
+        'XerxesMountBinary.get.Status'. An example of extra is: "value LIKE 'tracking'",
+        "value like '%LoopCompleted%:%true%' "   '''
+    # if database.name == 'LAST_0':
+    #     # LAST_0 as client using clickhouse_connect
+    #     client = clickhouse_connect.get_client(host='10.23.1.25', port=8123, \
+    #              username='last_user', password='physics', database='observatory_operation')        
+    # elif database.name == 'euclid':
+    #     # euclid as client using clickhouse_driver
+    #     client = Client(host='euclid', port=9000, \
+    #              user='last_user', password='physics', database='observatory_operation') 
     if N_read == -1: N_read=N_days
     query_string = build_range_query(N_days, N_read, dB_name, rediskey_prefix,extra)
     print(query_string)
 
-    if database == 'LAST_0':    
-        result = client.query(query_string)
-        df = pd.DataFrame(result.result_rows, columns=['rediskey', 'time', 'value']).set_index('rediskey')
-    elif database == 'euclid':
-        result = client.execute(query_string)
-        df = pd.DataFrame(result, columns=["rediskey", "time", "value"]).set_index("rediskey")
+    # if database.name == 'last0':    
+    #     result = client.query(query_string)
+    #     df = pd.DataFrame(result.result_rows, columns=['rediskey', 'time', 'value']).set_index('rediskey')
+    # elif database.name == 'euclid':
+    result = client.execute(query_string)
+    df = pd.DataFrame(result, columns=["rediskey", "time", "value"]).set_index("rediskey")
         
     # Convert to DataFrame
     
@@ -389,9 +425,9 @@ def plot_saving(output_directory, file_name, label):
     folder_name = f"{label}"     
     folder_path = os.path.join(output_directory, folder_name)
     os.makedirs(folder_path, exist_ok=True)   # Create the output directory if it doesn't exist
-    filtered_file_name = f"{file_name}.jpg"
+    filtered_file_name = f"{file_name}.png"
     full_file_path = os.path.join(folder_path, filtered_file_name) 
-    plt.savefig(full_file_path, format='jpg', dpi=300, bbox_inches='tight')
+    plt.savefig(full_file_path, format='png', dpi=300, bbox_inches='tight')
     return full_file_path
 
 
@@ -1146,7 +1182,7 @@ def plot_distribution_if_outliers(input_tuple):
     plt.show()
 
 
-def plot_tracking_results_1(tracking_results_groups):
+def plot_tracking_results_1(tracking_results_groups,output_directory):
     '''This plots RA- and Dec-std [arcsec] vs. hour
        Probably shows windy conditions or other extremes
        and this is very useful'''
@@ -1215,7 +1251,7 @@ def plot_tracking_results_1(tracking_results_groups):
     #for i, df in enumerate(tracking_results_groups):
         #print(f"\nmount {i+1}: {df.shape[0]} rows")
 
-def plot_FWHM(FWHM_groups):
+def plot_FWHM(FWHM_groups,output_directory):
     '''Plots minor width [pix] without filtering on 10 separate pages, one for each mount.
     Each plot has 4 scatters for the 4 telescopes.
     The x-axis is the adjusted_hour plotted for each night from 17:30-02:30 UTC'''
@@ -1267,7 +1303,7 @@ def plot_FWHM(FWHM_groups):
         plt.show()
 
 
-def plot_tracking_results_2(tracking_results_groups):
+def plot_tracking_results_2(tracking_results_groups,output_directory):
     '''10 scatter plots for the different mounts showing both RA and Dec
     as a function of adjusted_hour (17:00-02:30)'''
     
@@ -1387,7 +1423,7 @@ def insert_FWHM_into_tracking_results_groups(tracking_results_groups, FWHM_group
         updated_tracking_groups.append(target_df)
     return updated_tracking_groups
 
-def plot_tracking_results_3(tracking_results_groups, focus_groups):
+def plot_tracking_results_3(tracking_results_groups, focus_groups,output_directory):
     '''10 scatter plots for the different mounts showing FWHM (left) and RA and Dec (right)
     as a function of adjusted_hour (17:30-02:30) and Vertical lines for Focuses'''
     for i, df in enumerate(tracking_results_groups):
@@ -1694,7 +1730,7 @@ def get_minor_series(focus_times, tracking_results_groups):
     return pd.DataFrame(results), pd.DataFrame(jumps)
 
 
-def plot_KDE(df, mount, column, scopes=[1,2,3,4], bw_adjust=1):
+def plot_KDE(df, mount, column, output_directory, scopes=[1,2,3,4], bw_adjust=1):
     """ Plot KDE curves for a given mount and column, for the different scopes.
     Parameters:
     - df : DataFrame
@@ -1776,7 +1812,7 @@ def add_temp_medians(tracking_results_groups, df_Temp_groups):
     return updated_groups
 
 
-def plot_jumps(jumps):
+def plot_jumps(jumps,output_directory):
     '''Plots the jumps [pix] in 4 bins: 0.3-0.7, 0.7-1.4, 1.4-2, >2  for each scope'''
     
     freq_jumps = (jumps["jump_mountscope"].value_counts().rename("freq").rename_axis("jump_mountscope").reset_index())
@@ -1827,7 +1863,7 @@ def plot_jumps(jumps):
     plt.show()
 
 
-def plot_jumps_2(jumps):
+def plot_jumps_2(jumps,output_directory):
     '''Plots 3-sub plots for demonstrating the correlation of the jumps (which
     are on the x-axis) with the az_jump, alt_jump and sin(alt_jump).'''
     fig, axes = plt.subplots(nrows=3, ncols=1, figsize=(8, 10), sharex=True)
@@ -1871,7 +1907,7 @@ def angular_distance(alt1_deg, az1_deg, alt2_deg, az2_deg):
     return math.degrees(d)
 
 
-def mount_scope_medians(FWHM_groups):
+def mount_scope_medians(FWHM_groups,output_directory):
     """  Take a list of DataFrames and calculate median 'minor' for each scope in each df.
     Returns a single DataFrame with columns:
       index (1..N), mount, scope, avg_minor     """
@@ -1939,7 +1975,7 @@ def mount_scope_medians(FWHM_groups):
     return all_df
 
 
-def plot_alt_vs_hour(focus_groups):
+def plot_alt_vs_hour(focus_groups,output_directory):
     '''plots the Alt at which each mount performed focus at the different hours'''
     
     fig, ax = plt.subplots(figsize=(10, 6))  

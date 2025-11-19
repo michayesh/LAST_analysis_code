@@ -19,9 +19,15 @@ import numpy as np
 from collections import defaultdict
 import clickhouse_connect
 from clickhouse_driver import Client
+import math
+
 #from load_mat_analyze_fit5_07_09 import basic_processing_FWHM, keep_2_elements_only
 # select the computer from which to run: LAST_0 or euclid
 database = 'euclid' #'LAST_0'
+euclidhost = '10.150.28.18'
+euclidport = 9000
+eucliduser ='default'
+euclidpw = 'PassRoot'
 
 if database == 'LAST_0':
     # LAST_0 as client using clickhouse_connect
@@ -29,8 +35,8 @@ if database == 'LAST_0':
              username='last_user', password='physics', database='observatory_operation')        
 elif database == 'euclid':
     # euclid as client using clickhouse_driver
-    client = Client(host='euclid', port=9000, \
-             user='last_user', password='physics', database='observatory_operation')        
+    client = Client(host=euclidhost, port=euclidport, \
+             user=eucliduser, password=euclidpw, database='observatory_operation')        
 
 
 def read_DB(N_days, N_read, dB_name, rediskey_prefix, extra=None):
@@ -76,7 +82,7 @@ def build_range_query(N_days, N_read, table: str, rediskey_prefix: str, extra_co
     start_date = start_date.replace(hour=12, minute=0, second=0, microsecond=0)
     # Compute end date (start_date + N_read days)
     #end_date = start_date + timedelta(days=N_read)
-    end_date = start_date + timedelta(hours=7.5)
+    end_date = start_date + timedelta(hours=24)
     # Format for ClickHouse (YYYY-MM-DD HH:MM:SS)
     start_str = start_date.strftime('%Y-%m-%d %H:%M:%S')
     end_str   = end_date.strftime('%Y-%m-%d %H:%M:%S')
@@ -199,7 +205,9 @@ def julian_to_ddmm(jd, fmt='%d-%m'):
     else:
         return pd.Series(formatted, index=None)    
 
-def make_focpos_fwhm_dict(row, n_max=10):
+def make_focpos_fwhm_dict(row, n_max=20):
+    ''''For each of the focusing positions open column ResTable_{n}
+    and extract FocPos and FWHM and create return as a dictionary called pairs'''
     pairs = {}
     for n in range(n_max):
         foc_col = f"ResTable_{n}.FocPos"
@@ -240,7 +248,7 @@ def plot_focus_by_index(df, zoom=True, inset_width="40%", inset_height="40%", in
     - Black line: vshape fit
     """
 
-    # Keep only completed loops
+    # Keep only completed loops, this is redundant, since we only read completed from dB
     if "LoopCompleted" in df.columns:
         df = df[df["LoopCompleted"] == True]
 
@@ -379,6 +387,162 @@ def plot_focus_by_index(df, zoom=True, inset_width="40%", inset_height="40%", in
         writer.writerow([mount_num, scope_num, *y_eran])
 
 
+def plot_focus_pages(df, zoom=True, inset_width="40%", inset_height="40%", inset_loc="upper center"):
+    """
+    Plot focus traces with one trace per subplot.
+    - 12 subplots per page (3x4 grid)
+    - 4 pages total (one per scope)
+    - Each subplot includes an inset zoom
+    Uses global df_medians and output_directory.
+    """
+
+    global df_medians, output_directory
+
+    if "LoopCompleted" in df.columns:
+        df = df[df["LoopCompleted"] == True]
+
+    # Parse mount/scope from index "XX.Y"
+
+    df[['mount_str', 'scope_str']] = df['level_0'].str.split('.', expand=True)
+    df['mount'] = df['mount_str'].astype(int)
+    df['scope'] = df['scope_str'].astype(int)
+    mount_num = df['mount'][0]
+    for scope_num in sorted(df['scope'].unique()):
+        df_scope = df[df['scope'] == scope_num]
+        if df_scope.empty:
+            continue
+
+        # Sort to make plots consistent
+        df_scope = df_scope.sort_values(['TimeStarted'])
+        traces_per_page = 12
+        unique_indices = df_scope.index.unique()
+        n_pages = math.ceil(len(unique_indices) / traces_per_page)
+        
+        for page in range(n_pages):
+            start = page * traces_per_page
+            end = start + traces_per_page
+            df_page = df_scope.loc[unique_indices[start:end]]
+        
+            fig, axes = plt.subplots(3, 4, figsize=(16, 9), squeeze=False)
+            fig.suptitle(f"Mount {mount_num} Scope {scope_num} – Page {page + 1}", fontsize=14)
+            axes = axes.flatten()
+            i=0
+            for ax, (_, row) in zip(axes, df_page.iterrows()):
+                i+=1
+                points = row.get("Points", {})
+                if not isinstance(points, dict) or len(points) == 0:
+                    ax.axis("off")
+                    continue
+        
+                valid_pairs = [
+                    (_safe_float(k), _safe_float(v))
+                    for k, v in points.items()
+                    if _safe_float(k) is not None and _safe_float(v) is not None
+                ]
+                if not valid_pairs:
+                    ax.axis("off")
+                    continue
+                # add inset
+                axins = inset_axes(ax, width=inset_width, height=inset_height, loc=inset_loc)
+                
+                # plot median line + std range
+                row_median = df_medians[(df_medians['mount'] == mount_num) & (df_medians['scope'] == scope_num)]
+                if not row_median.empty:
+                    median_val = row_median['median'].values[0]
+                    std_val = row_median['std'].values[0]
+                    if pd.notna(median_val) and pd.notna(std_val) and axins is not None:
+                        axins.axvline(x=median_val, color='green', linestyle='-', linewidth=1.5)
+                        axins.hlines(y=4, xmin=median_val - std_val, xmax=median_val + std_val, color='green')
+                
+        
+                x_vals = np.array([p[0] for p in valid_pairs])
+                y_vals = np.array([p[1] for p in valid_pairs])
+                #ax.scatter(x_vals, y_vals, color="blue", s=25)
+                
+                # check status
+                status = row.get("Status", "")
+        
+                if status == "Found.":
+                    # filled blue dots
+                    ax.scatter(x_vals, y_vals, color="blue", s=30, zorder=2)
+                    if axins is not None:
+                        axins.scatter(x_vals, y_vals, color="blue", s=12, zorder=2)
+                else:
+                    # hollow blue circles
+                    ax.scatter(x_vals, y_vals, facecolors="none", edgecolors="blue", s=30, zorder=2)
+                    if axins is not None:
+                        axins.scatter(x_vals, y_vals, facecolors="none", edgecolors="blue", s=12, zorder=2)
+                if axins is not None:
+                   axins.scatter(x_vals, y_vals, color="blue", s=10)
+                
+                
+                # Best point
+                bestpos = _safe_float(row.get("BestPos"))
+                bestfwhm = _safe_float(row.get("BestFWHM"))
+                if bestpos is not None and bestfwhm is not None:
+                    if status == "Found.":
+                        main_size, inset_size = 300, 150  # larger marker
+                    else:
+                        main_size, inset_size = 80, 40   # smaller marker
+                
+                    ax.scatter(bestpos, bestfwhm, color="red", marker="+", s=main_size, zorder=3)
+                
+                    if axins is not None:
+                        axins.scatter(bestpos, bestfwhm, color="red", marker="+", s=inset_size, zorder=3)
+                        
+                        
+                # fit curve
+                fit_param = row.get("FitParam")
+                if isinstance(fit_param, (list, tuple)) and len(fit_param) == 3:
+                    #slope, center, offset = fit_param
+                    center = _safe_float(fit_param[0])
+                    offset = _safe_float(fit_param[1])
+                    slope = _safe_float(fit_param[2])
+                    if None not in (slope, center, offset):
+                        x_fit = np.linspace(min(x_vals), max(x_vals), 400)
+                        y_fit = vshape(x_fit, slope, center, offset)
+                        ax.plot(x_fit, y_fit, "k-", linewidth=1)
+                        if axins is not None:
+                            axins.plot(x_fit, y_fit, "k-", linewidth=0.8)
+                            axins.set_xlim(center - 150, center + 150)
+                            axins.set_ylim(0, 6)
+                            axins.grid(True)
+                            axins.tick_params(labelsize=7)
+                            axins.xaxis.set_major_formatter(FuncFormatter(lambda x, _: f"{int(round(x)) % 1000:03d}"))
+                
+                text_str = f"{center:5.0f}" if pd.notna(center) else "  NaN "
+                ax.text(
+                    0.95, 0.05, text_str,
+                    transform=ax.transAxes,
+                    fontsize=12,
+                    color="red",
+                    ha="right",
+                    va="bottom",
+                    bbox=dict(facecolor="white", alpha=0.6, edgecolor="gray", boxstyle="round,pad=0.3")
+                )
+                            
+                
+                
+                hour = "_".join(row.get("HH-MM-DD-mm", "").split('_')[0:2])
+                Temperature = row.get("Temperature", "")
+                # aesthetics
+                ax.set_title(f"Focus {i} at {hour} T:{Temperature}   {status}", fontsize=11)
+                ax.set_xlabel("FocPos")
+                ax.set_ylabel("FWHM")
+                ax.set_ylim(-1, 40)
+                ax.grid(True)
+            # hide extra axes if fewer than 12 rows
+            for ax in axes[len(df_page):]:
+                ax.axis("off")
+        
+            plt.tight_layout()
+            label = 'fit'
+            filename = f'separated_x12_{mount_num}.{scope_num}'
+            plot_saving(output_directory, filename, label)
+            plt.show()
+        
+    return df
+
 # -----------------------------
 # Helpers
 # -----------------------------
@@ -405,19 +569,21 @@ def plot_saving(output_directory, file_name, label):
 # -----------------------------
 
 # read the CSV in which the median results are found
-df_medians = pd.read_csv("medians_11-09 --- 24-09.csv")  # must have columns: mount, scope, median, std
+medians_file = "/home/micha/Dropbox/RonArad_Share_with_Micha/medians_BestPos_30-09 --- 20-10.csv"
+df_medians = pd.read_csv(medians_file)  # must have columns: mount, scope, median, std
+print('\nLoaded Medians from file', medians_file,'\n')
 
 t0 = pd.Timestamp("1970-01-01T00:00:00")    
-N_days = 2  #This is the total number of days to analyze
-N_show = 1   #-1 for all, N_show smaller than N_days allows to see older data
+N_days = 3  #This is the total number of days to analyze
+N_show = -1   #-1 for all, N_show smaller than N_days allows to see older data
 '''example 3,1 will show only 1 day that occured 3 days ago
            2,1 same but for the day before yesterday
            1,1 is yesterday'''
 base_path = '/home/ocs/Documents/output'
-output_directory = os.path.join(base_path,('v_shape_' + 
-               str(N_days) + '_' + str(N_show) + 
-               '_' + datetime.now().strftime("%H-%M")))
-
+# output_directory = os.path.join(base_path,('v_shape_' + 
+#                str(N_days) + '_' + str(N_show) + 
+#                '_' + datetime.now().strftime("%H-%M")))
+output_directory = r'/home/micha/Dropbox/WAO/LAST_analysis'
 
 for mount in range(1,11):
     mount_str = f"{mount:02d}"  # 01, 02, ..., 10
@@ -432,7 +598,7 @@ for mount in range(1,11):
     df_focus = basic_processing_FWHM(df_focus)
     df_focus["index"] = df_focus.index
     df_focus = df_focus[df_focus["LoopCompleted"] == True]
-    
+    df_focus['hour'] = df_focus['HH-MM-DD-mm'].str.split('_').str[0].astype(float) + df_focus['HH-MM-DD-mm'].str.split('_').str[1].astype(float)/60.
     
     df_sorted = df_focus.sort_values(by=["index", "TimeStarted", "Counter"]).reset_index()
     
@@ -453,4 +619,6 @@ for mount in range(1,11):
     df_grouped = df_grouped[df_grouped["Status"] != ""].sort_index()
     df_grouped['Points'] = df_grouped.apply(make_focpos_fwhm_dict, axis=1)
     
-    plot_focus_by_index(df_grouped)
+    #plot_focus_by_index(df_grouped)
+    #print('finished first type of plot')
+    df_out = plot_focus_pages(df_grouped)
