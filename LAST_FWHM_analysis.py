@@ -17,7 +17,7 @@ import pyLAST as pla
 # import pandas as pd
 import time
 from datetime import datetime
-# import os
+import os
 # import clickhouse_connect
 # from clickhouse_driver import Client
 # from pydantic import BaseModel
@@ -50,6 +50,11 @@ else:
     #TODO  read from a local file
 tic = time.time()
 timestamp = datetime.now().strftime('%y%m%d%H%M')
+# generate a folder for the current run:
+outdir = os.path.join(outpath,timestamp + '_output')
+if  not os.path.isdir(outdir):
+    os.mkdir(outdir)
+
 print('started queries\n ***********************\n')
 if  localrun:
     sys.exit() # for now
@@ -70,5 +75,5 @@ FWHM_groups = pla.separate_by_mount(df_FWHM)
 toc = time.time()
 print(f"\nElapsed time: {toc - tic:.3f} seconds")
 print('\nfinished loading data')
-pla.plot_FWHM(FWHM_groups,outpath)
+pla.plot_FWHM(FWHM_groups,outdir)
 print('Finished')

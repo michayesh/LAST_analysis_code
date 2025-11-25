@@ -104,6 +104,46 @@ def read_DB(N_days, N_read, client, dB_name, rediskey_prefix, extra=None):
     print('\n')
     return df
 
+def read_DB1( client, dB_name, rediskey_prefix, extra=None, 
+             startdate=None, enddate=None,N_days =1, N_read=1,):
+    '''A general function for reading a given range of days from databse (dictionary with database details)
+    looking for rediskey prefix. Note, the extra parameter is not mandatory and
+    is used to add another condition
+    parameters:
+        N_days is the number of days before present to search for
+        N_read limits the search to N_read days after the initial day, set to -1 for all
+        database - a datbase object with name, host ip, port username, pasword and datbase
+        dB_name is either operation_strings or operation_numbers
+        rediskey prefix - 
+        examples of rediskey_prefix are: 'unitCS.set.FocusData:', 'XerxesMountBinary.get.Dec', 
+        'XerxesMountBinary.get.Status'. An example of extra is: "value LIKE 'tracking'",
+        "value like '%LoopCompleted%:%true%' "   '''
+    # if database.name == 'LAST_0':
+    #     # LAST_0 as client using clickhouse_connect
+    #     client = clickhouse_connect.get_client(host='10.23.1.25', port=8123, \
+    #              username='last_user', password='physics', database='observatory_operation')        
+    # elif database.name == 'euclid':
+    #     # euclid as client using clickhouse_driver
+    #     client = Client(host='euclid', port=9000, \
+    #              user='last_user', password='physics', database='observatory_operation') 
+    if N_read == -1: N_read=N_days
+    query_string = build_range_query(N_days, N_read, dB_name, rediskey_prefix,extra)
+    print(query_string)
+
+    # if database.name == 'last0':    
+    #     result = client.query(query_string)
+    #     df = pd.DataFrame(result.result_rows, columns=['rediskey', 'time', 'value']).set_index('rediskey')
+    # elif database.name == 'euclid':
+    result = client.execute(query_string)
+    df = pd.DataFrame(result, columns=["rediskey", "time", "value"]).set_index("rediskey")
+        
+    # Convert to DataFrame
+    
+    print('loaded ', len(df), 'items')
+    print('Here is the first line:\n',df.tail(1))
+    print('\n')
+    return df
+
 
 def build_range_query(N_days, N_read, table: str, rediskey_prefix: str, extra_condition=None) -> str:
     """ Build a ClickHouse SQL query for a given time range.
@@ -136,6 +176,54 @@ def build_range_query(N_days, N_read, table: str, rediskey_prefix: str, extra_co
     query += " ORDER BY time DESC "         
     return query.strip()    
     
+
+def build_range_query1( table:str, rediskey_prefix:str, extra_condition=None,
+                              startdate:str=None, enddate:str=None, N_days:int=1, N_read:int=1) -> str:
+    """ Build a ClickHouse SQL query for a given time range.
+    N_days : int       Number of days ago to start (start at 12:00:00 that day).
+    N_read : int       Number of days to include in the query range.
+    table : str        Name of the ClickHouse table (e.g., 'operation_strings').
+    rediskey_prefix : str  The prefix string for startsWith(rediskey, ...).
+    extra_condition (str, optional): Additional SQL condition to append to WHERE
+    Returns  query : str    SQL query string. 
+    start_date : string  start date dd/mm/yy  (start at 12:00:00 that day).
+    end_date : string end_date dd/mm/yy (ends at 12:00 that day)
+    """
+    # Compute start date (N days ago at noon)
+    # start_date = datetime.now() - timedelta(days=N_days)
+    if startdate:
+        start_date = datetime.strptime(startdate,'%d/%m/%y').replace(hour=12, minute=0, second=0, microsecond=0)
+    elif N_days:
+        start_date = datetime.now() - timedelta(days=N_days)
+        start_date = start_date.replace(hour=12, minute=0, second=0, microsecond=0)
+    else:
+        raise Exception('Error: either start date or N_days must be given')
+    
+    if enddate:
+        end_date = datetime.strptime(enddate,'%d/%m/%y').replace(hour=12, minute=0, second=0, microsecond=0)
+    elif N_read:
+        end_date = start_date + timedelta(days=N_read)
+    else:
+        raise Exception('Error: either start date or N_days must be given')
+        
+   
+    # Compute end date (start_date + N_read days)
+    # Format for ClickHouse (YYYY-MM-DD HH:MM:SS)
+    start_str = start_date.strftime('%Y-%m-%d %H:%M:%S')
+    end_str   = end_date.strftime('%Y-%m-%d %H:%M:%S')
+
+    # Build query
+    query = f"""
+        SELECT * FROM {table}
+        WHERE startsWith(rediskey, '{rediskey_prefix}')
+          AND time > '{start_str}'
+          AND time < '{end_str}'    """
+    # add extra condition if provided
+    if extra_condition:
+        query += f" AND {extra_condition}"   
+    # always order by time descding
+    query += " ORDER BY time DESC "         
+    return query.strip()    
 class DualLogger:
     '''This class serves to log simultaneously to console + file'''
     def __init__(self, filename):
