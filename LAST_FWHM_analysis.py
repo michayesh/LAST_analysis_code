@@ -4,7 +4,7 @@
 Created on Tue Nov 18 21:46:57 2025
 FWHM analysis
 Written originally by Ron ARAD
-Modified and enahnced by Micha
+Modified and enhanced by Micha
 imports the functions package
 Argument: path to the toml config file
 Reads an toml file with program prameters and runs the analysis
@@ -30,8 +30,14 @@ euclid = pla.LastDatabase(**cfg['databases']['euclid'])
 last0 = pla.LastDatabase(**cfg['databases']['last0'])
 inpath = general['input_path']
 outpath = general['output_path']
+general.setdefault('Ndays')
 N_days = general['Ndays']
+general.setdefault('Nshow')
 N_show = general['Nshow']
+general.setdefault('startdate')
+startdate = general['startdate']
+general.setdefault('enddate')
+enddate = general['enddate']
 localrun =  general['localrun']
 run = cfg['run']
 plots = cfg['plots']
@@ -61,12 +67,14 @@ if  localrun:
     #TODO read from local file df_FWHM = pla.load_FWHM_csv(input_file_FWHM, fraction_to_read, start_reading_at_frac)
     
 else:
-    df_FWHM = pla.read_DB(N_days, N_show, client,
-                          'operation_strings', 'camera.set.FWHMellipse:')
-if df_FWHM.empty:
-    print('There are NO observations during your requested interval - stopping')
-    sys.exit()  
-df_FWHM = pla.filter_N_days(pla.basic_processing_FWHM(df_FWHM), N_days, N_show)
+    df_FWHM = pla.read_DB1(client,
+                          'operation_strings', 'camera.set.FWHMellipse:', None, startdate, enddate, N_days, N_show)
+# if df_FWHM.empty:
+#     print('There are NO observations during your requested interval - stopping')
+#     sys.exit()  
+df_FWHM = pla.basic_processing_FWHM(df_FWHM)
+# df_FWHM = pla.filter_N_days(pla.basic_processing_FWHM(df_FWHM), N_days, N_show)
+# df_FWHM = pla.filter_N_days(df_FWHM, N_days, N_show)
 df_FWHM, empty_cols = pla.filter_columns_by_nan_or_empty_lists(df_FWHM, 0.5) 
                 #optional 2nd param: frac determines threshold from total rows (0.1)
 print('empty columns removed:', empty_cols)

@@ -1,0 +1,68 @@
+[general]
+localrun = false
+database = 'euclid'
+input_path = '/home/micha/Dropbox/WAO/LAST_analysis/input_dir'
+output_path = '/home/micha/Dropbox/WAO/LAST_analysis/output_dir'
+datbase_path = '/home/micha/Dropbox/WAO/LAST_analysis/databases'
+Ndays =1
+Nshow = 1
+# Comment startdate and enddate if not used
+startdate = '22/11/25'
+enddate =  '23/11/25'
+fraction_to_read = 0.2
+start_reading_at_frac = 0.0 #larger fraction is earlier
+nmounts = 10
+# todo - capability to work on mount groups
+[run]
+tracking_analysis = true
+FWHM_analysis = true
+focus_analysis = true
+Temp_analysis = true
+# type of fit for focus vs temperature fits
+regular_fit = true 
+constraints = false
+[plots]
+FWHM_no_filter = true                  #(5) FWHM analysis
+FWHM_RA_Dec_focus = true               #(4)  FWHM analysis
+fraction_bad_focus = true              #(6)
+RA_Dec_std = true                     #(1),(2)
+RA_Dec = true                          #(3)
+Focus_temperature_slope = true         #(7)
+Focus_distribution_and_median = true   #(8)
+Alt_for_each_Focus = true              #(9)
+number_of_jumps = true                 #(10)
+correlation_jumps_Az_Alt = true        #(11)
+mean_FWHM = true                       #(12)
+KDE_delta_Minor = true   
+
+[databases.euclid]
+name = 'euclid'
+host = '10.150.28.18'
+port = 9000
+user ='default'
+pw = 'PassRoot'
+operdb = 'observatory_operation'
+
+[databases.last0]
+host = '10.23.1.25'
+port = 8123
+user = 'last_user'
+pw = 'physics'
+operdb = 'observatory_operation'
+[history]
+file_FWHM  = 'FWHM_August_September.csv'
+file_focus = 'Focus_August_September.csv'
+file_tracking = 'Mount_status_August_September.csv'
+file_RA = 'RA_August_September.csv'
+file_Dec = 'Dec_August_September.csv'
+file_Az = 'Az_August_September.csv'
+file_Alt = 'Alt_August_September.csv'
+file_Temp_1 = 'Temperature_1_August_September.csv'
+file_Temp_2 = 'Temperature_2_August_September.csv'
+
+#'''There are 3 options to run fit 1. regular (True), 2. fixes slope = 18, fit only offset (False),
+#3. use 4 parameter constraints: lower, upper limits + initial slope + weight (False and constraints given)'''
+#regular_fit = false    # if false, and constraints not given, applies slope=18 and fits only intercept or if constraints is not empty:
+#constraints =(10., 23., 16., 0.1)   #first 2 are the rigid slope limits, the third is the center and the 4th is the weight
+
+

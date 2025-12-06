@@ -36,7 +36,9 @@ t0 = pd.Timestamp("1970-01-01T00:00:00")
 # The following colors are globally used for 4 traces (4 scopes) and for 10 mounts
 colors = ['red', 'green', 'blue', 'purple']
 colors_mounts = {"1": "red", "2": "green", "3": "blue", "4": "brown", "5": "pink", "6": "gray",    \
-          "7": "purple", "8": "orange", "9": "olive", "10": "cyan"}  # per mount   
+          "7": "purple", "8": "orange", "9": "olive", "10": "cyan"}  # per mount  
+# constraints for fitting focus -temperature slopes 
+constraints =(-20., 23., 16., 0.1)   #first 2 are the rigid slope limits, the third is the center and the 4th is the weight
 
 class LastDatabase(BaseModel):
     """
@@ -104,20 +106,24 @@ def read_DB(N_days, N_read, client, dB_name, rediskey_prefix, extra=None):
     print('\n')
     return df
 
-def read_DB1( client, dB_name, rediskey_prefix, extra=None, 
-             startdate=None, enddate=None,N_days =1, N_read=1,):
+def read_DB1( client, db_name:str, rediskey_prefix:str, extra:str=None, 
+             startdate:str=None, enddate:str=None, N_days:int =1, N_read:int=1):
     '''A general function for reading a given range of days from databse (dictionary with database details)
     looking for rediskey prefix. Note, the extra parameter is not mandatory and
     is used to add another condition
     parameters:
-        N_days is the number of days before present to search for
-        N_read limits the search to N_read days after the initial day, set to -1 for all
-        database - a datbase object with name, host ip, port username, pasword and datbase
+        client = a clickhouse database client opened with the database.connect method
         dB_name is either operation_strings or operation_numbers
         rediskey prefix - 
         examples of rediskey_prefix are: 'unitCS.set.FocusData:', 'XerxesMountBinary.get.Dec', 
         'XerxesMountBinary.get.Status'. An example of extra is: "value LIKE 'tracking'",
-        "value like '%LoopCompleted%:%true%' "   '''
+        "value like '%LoopCompleted%:%true%' "   
+        extra = extra condition = query = query AND extra condition
+        startdate = start date for the database query if None N_days and N_read are used
+        enddate = end date for the database query if None N_days and N_read are used
+        N_days is the number of days before present to search for (default = 1)
+        N_read limits the search to N_read days after the initial day, set to -1 for all (default = 1)
+        '''
     # if database.name == 'LAST_0':
     #     # LAST_0 as client using clickhouse_connect
     #     client = clickhouse_connect.get_client(host='10.23.1.25', port=8123, \
@@ -127,7 +133,7 @@ def read_DB1( client, dB_name, rediskey_prefix, extra=None,
     #     client = Client(host='euclid', port=9000, \
     #              user='last_user', password='physics', database='observatory_operation') 
     if N_read == -1: N_read=N_days
-    query_string = build_range_query(N_days, N_read, dB_name, rediskey_prefix,extra)
+    query_string = build_range_query1( db_name, rediskey_prefix, extra, startdate, enddate, N_days, N_read)
     print(query_string)
 
     # if database.name == 'last0':    
@@ -138,10 +144,13 @@ def read_DB1( client, dB_name, rediskey_prefix, extra=None,
     df = pd.DataFrame(result, columns=["rediskey", "time", "value"]).set_index("rediskey")
         
     # Convert to DataFrame
-    
-    print('loaded ', len(df), 'items')
-    print('Here is the first line:\n',df.tail(1))
-    print('\n')
+    if df.empty:
+        print('There is NO data in %s during the requested interval - stopping'% rediskey_prefix)
+        sys.exit()  
+    else: 
+        print('loaded %d items'%len(df))
+        print('Here is the first line:\n',df.tail(1))
+        print('\n')
     return df
 
 
@@ -251,7 +260,7 @@ class DualLogger:
 def filter_columns_by_nan_or_empty_lists(df: pd.DataFrame, frac=0.1):
     """ Removes columns that have more than frac NaNs or empty lists.
     Assumes that each column contains only NaNs or only empty lists, not both.
-    Parameters: frac: Maximum allowed fraction NaNs N_NaNs/ len(df)
+    Parameters: frac: Maximum allowed fraction NaNs = N_NaNs/ len(df)
     Returns:    tuple: (filtered DataFrame, list of removed column names) """
     
     N = len(df)
@@ -291,13 +300,14 @@ def filter_columns_by_nan(df: pd.DataFrame, N=1000):
     return filtered_df, cols_to_remove
 
 
-def julian_to_ddmm(jd, fmt='%d-%m'):
+def julian_to_ddmm(jd, fmt='%d-%m-%y'):
     """ Convert Julian Day number(s) to formatted date string(s).
     Parameters:
         jd (float or array-like): Julian Day(s)
         fmt (str): datetime.strftime format string (default '%d-%m')
     Returns: str or pd.Series: formatted date string(s)   """    
     # Convert input to numpy array for uniformity
+    # 
     jd_arr = np.atleast_1d(jd)
     ts = pd.to_datetime((jd_arr - 2440587.5) * 86400, unit='s', utc=True)
     # Format dates as strings
@@ -536,7 +546,7 @@ def highlight_bad_slope(column):
     return ['background-color: red' if (v < slope_min or v > slope_max) else '' for v in column]
     
 
-def write_append_cols_excel(Fit_results):
+def write_append_cols_excel(Fit_results,output_directory):
     '''Exports the output to excel. When repeated, in order
     to append columns next to previously placed columns, the initial export is
     first imported and then the startcol is adjusted after the existing data'''
@@ -933,7 +943,7 @@ def find_noon_rollover_indexes(df):
     
     return [0] + rollover_indexes #add the 0 index for convenience later in the plotting
         
-def plot_bad_fit_fraction(df: pd.DataFrame, instrument: str = "rediskey", status_col: str = "Status"):
+def plot_bad_fit_fraction(df: pd.DataFrame, output_directory:str, instrument: str = "rediskey", status_col: str = "Status"):
     """
     For each unique value in the rediskey column, calculates the fraction of rows
     where the status does NOT contain "Found." and plots the result.
@@ -1015,18 +1025,22 @@ def plot_bad_fraction_per_day(df, time_col='TimeStarted', status_col='Status'):
     plt.tight_layout()
     plt.show()
 
-
-def plot_bestpos_vs_temp_by_mount(df, x_axis:str, y_axis:str):
+#TODO seperate plot from data processing
+def plot_bestpos_vs_temp_by_mount(df:pd.DataFrame, output_directory:str,plots:dict,regular_fit:bool, x_axis:str, y_axis:str):
     """ Plots y-axis data vs. x-axis data.
-    It splits the data by mount number (int(indexes)) and plots 10 subplots.
+    It splits the data by mount number (int(indexes)) and plots nmounts (10) subplots.
     Each subplot includes 4 scopes (based on fractional part of indexes).
     The y-limits are set by the 99th percentile of y_axis for that mount.
     Then, a linear fit is performed for each trace and plotted and saved.
     Specifically for BestPos the tick numbers are shifted to place assure all 4 
     scopes are in the same range with 150 tick spacing. The linear fit is either simple,
-    or with constrants + center + weight to favor clusters, see the definition in Main.
+    or with constraints + center + weight to favor clusters, see the definition in Main.
     Different symbols are given for the first 12 days in a run. The first 2 hrs of 
     observations are excluded (to reduce noise)
+    parameters:
+        df =
+        output_directory = folder for saving the plots
+        plots = a dictionary with boolean flags to determine which plots to plot
     """   
     data_for_distribution_plot = []
     if y_axis =='minor': 
@@ -1206,13 +1220,14 @@ def plot_bestpos_vs_temp_by_mount(df, x_axis:str, y_axis:str):
     write_append_cols_excel(fit_results)
     
     df_high = pd.DataFrame(high_values, columns=['mount', 'scope', 'times'])
-    out = os.path.join(output_directory,(file_short + '_high.xlsx'))
+    # out = os.path.join(output_directory,(file_short + '_high.xlsx'))
+    out = os.path.join(output_directory,(f'{date_range}' + '_high.xlsx'))
     df_high.to_excel(out, index=False)
     df_medians = pd.DataFrame(medians_list)
     file_name = os.path.join(output_directory,f'medians_BestPos_{date_range}.csv')
     df_medians.to_csv(file_name, index=False)
     print(f'saved medians to file:  medians_BestPos_{date_range}.csv')
-    if plot_Focus_distribution_and_median:
+    if plots['Focus_distribution_and_median']:
         for row in data_for_distribution_plot:
             plot_distribution_if_outliers(row)
     
@@ -1998,7 +2013,9 @@ def angular_distance(alt1_deg, az1_deg, alt2_deg, az2_deg):
 def mount_scope_medians(FWHM_groups,output_directory):
     """  Take a list of DataFrames and calculate median 'minor' for each scope in each df.
     Returns a single DataFrame with columns:
-      index (1..N), mount, scope, avg_minor     """
+      index (1..N), mount, scope, avg_minor    
+   Optionally merges saved data with the current data   
+      """
       
     rows = []   
     for df in FWHM_groups:
@@ -2025,24 +2042,26 @@ def mount_scope_medians(FWHM_groups,output_directory):
     # Format mount with leading zero if needed
     all_df["mount_str"] = all_df["mount_str"].str.zfill(2)   
     all_df["mount_scope"] = all_df["mount_str"] + "." + all_df["scope_str"]
-
-    plt.figure(figsize=(10, 5))   
-    for _, row in all_df.iterrows():
-        mount = str(int(row["mount"]))  # e.g., "1","2",..."10"
-        label = row["mount_scope"]
-        value = row["avg_minor"]
-        plt.scatter(label, value, color=colors_mounts.get(mount, "black"), s=80 )       
-    title = 'Median FWHM vs Mount.Scope for ' + earliest + ' --- ' + latest 
-    plt.xlabel("Mount.Scope")
-    plt.ylabel("Median Minor (avg_minor)")
-    plt.title(title)
-    plt.grid(True, linestyle="--", alpha=0.4)
-    plt.xticks(rotation=90)   
-    plt.tight_layout()
-    filename = f'median_FWHM_all_scopes {earliest}-{latest}'
-    label = str('median_FWHM')
-    plot_saving(output_directory, filename, label)
-    plt.show()
+    #TODO take out the plot to a function
+    # def plotXXXXX(all_df:pd.DataFrame)
+    # plt.figure(figsize=(10, 5))
+    # #TODO  generalize to num of mounts
+    # for _, row in all_df.iterrows():
+    #     mount = str(int(row["mount"]))  # e.g., "1","2",..."10"
+    #     label = row["mount_scope"]
+    #     value = row["avg_minor"]
+    #     plt.scatter(label, value, color=colors_mounts.get(mount, "black"), s=80 )       
+    # title = 'Median FWHM vs Mount.Scope for ' + earliest + ' --- ' + latest 
+    # plt.xlabel("Mount.Scope")
+    # plt.ylabel("Median Minor (avg_minor)")
+    # plt.title(title)
+    # plt.grid(True, linestyle="--", alpha=0.4)
+    # plt.xticks(rotation=90)   
+    # plt.tight_layout()
+    # filename = f'median_FWHM_all_scopes {earliest}-{latest}'
+    # label = str('median_FWHM')
+    # plot_saving(output_directory, filename, label)
+    # plt.show()
 
     # Sort by mount, then scope
     all_df = all_df.sort_values(["mount", "scope"]).reset_index(drop=True)
@@ -2063,7 +2082,7 @@ def mount_scope_medians(FWHM_groups,output_directory):
     return all_df
 
 
-def plot_alt_vs_hour(focus_groups,output_directory):
+def plot_alt_vs_hour(focus_groups:pd.DataFrame,output_directory:str):
     '''plots the Alt at which each mount performed focus at the different hours'''
     
     fig, ax = plt.subplots(figsize=(10, 6))  
