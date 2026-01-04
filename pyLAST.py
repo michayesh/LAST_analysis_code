@@ -3,7 +3,8 @@
 """
 Created on Tue Oct 21 23:07:37 2025
 ptLAST LAST analysis functions package
-Packs all of Rons functions into one package
+Packs all of Ron Arad's functions into one package
+With addtions and enhancements by Micha
 @author: micha
 """
 import pandas as pd
@@ -15,6 +16,7 @@ import json
 import math
 # import csv
 import time
+# import tomllib as tom
 import matplotlib.pyplot as plt
 from sklearn.linear_model import LinearRegression
 from sklearn.neighbors import KernelDensity
@@ -30,7 +32,9 @@ import subprocess
 import seaborn as sns
 # import clickhouse_connect
 from clickhouse_driver import Client
-from pydantic import BaseModel
+import clickhouse_connect
+# from pydantic import BaseModel
+#------------------- end of imports
 # A constant used in several funcions
 t0 = pd.Timestamp("1970-01-01T00:00:00")
 # The following colors are globally used for 4 traces (4 scopes) and for 10 mounts
@@ -39,77 +43,178 @@ colors_mounts = {"1": "red", "2": "green", "3": "blue", "4": "brown", "5": "pink
           "7": "purple", "8": "orange", "9": "olive", "10": "cyan"}  # per mount  
 # constraints for fitting focus -temperature slopes 
 constraints =(-20., 23., 16., 0.1)   #first 2 are the rigid slope limits, the third is the center and the 4th is the weight
-
-class LastDatabase(BaseModel):
-    """
-    Defines a LAST database class
-    with properties: 
-        name - string
-        host = host ip string
-        port = port num integer
-        user = user name string
-        pw = password string
+fovdict ={'tl':[5,6,12],
+      'tr':[18,24,23],
+      'tc':[11,17],
+      'dc':[8,14],
+    'll': [3,4],
+    'rr': [21,22],
+    'dl': [1,2,7],
+    'dr':[13,19,20],
+    'ctr': [9,10,15,16]}
+# class LastDatabase(BaseModel):
+#     """
+#     Defines a LAST database class
+#     with properties: 
+#         name - string
+#         host = host ip string
+#         port = port num integer
+#         user = user name string
+#         pw = password string
     
-    """
-    name:str = None
-    host:str = None
-    port:int = None
-    user:str = None
-    pw:str = None
-    operdb:str = None
+#     """
     
+#     name:str = None
+#     host:str = None
+#     port:int = None
+#     user:str = None
+#     pw:str = None
+#     operdb:str = None
+class LastDatabase: 
+    def __init__(self,dbcfg):
+        self.name = dbcfg.name
+        self.host = dbcfg.host
+        self.port = dbcfg.port
+        self.user = dbcfg.user
+        self.pw = dbcfg.pw
+        self.operdb = dbcfg.operdb
+        
     def connect(self):
-        client = Client(host=self.host, port=self.port, user=self.user,
+        if self.name == 'science':
+            client = clickhouse_connect.get_client(host=self.host, port=self.port,
+                                                   username=self.user, password=self.pw)
+        else:
+            client = Client(host=self.host, port=self.port, user=self.user,
                         password=self.pw, database= self.operdb)  
         return client
     # def __init__(self,name: str,host:str,port:int,user:str,pw:str):
     #     self.name = None
     #     self.host = None
-        
-
-def read_DB(N_days, N_read, client, dB_name, rediskey_prefix, extra=None):
-    '''A general function for reading a given range of days from databse (dictionary with database details)
-    looking for rediskey prefix. Note, the extra parameter is not mandatory and
-    is used to add another condition
-    parameters:
-        N_days is the number of days before present to search for
-        N_read limits the search to N_read days after the initial day, set to -1 for all
-        database - a datbase object with name, host ip, port username, pasword and datbase
-        dB_name is either operation_strings or operation_numbers
-        rediskey prefix - 
-        examples of rediskey_prefix are: 'unitCS.set.FocusData:', 'XerxesMountBinary.get.Dec', 
-        'XerxesMountBinary.get.Status'. An example of extra is: "value LIKE 'tracking'",
-        "value like '%LoopCompleted%:%true%' "   '''
-    # if database.name == 'LAST_0':
-    #     # LAST_0 as client using clickhouse_connect
-    #     client = clickhouse_connect.get_client(host='10.23.1.25', port=8123, \
-    #              username='last_user', password='physics', database='observatory_operation')        
-    # elif database.name == 'euclid':
-    #     # euclid as client using clickhouse_driver
-    #     client = Client(host='euclid', port=9000, \
-    #              user='last_user', password='physics', database='observatory_operation') 
-    if N_read == -1: N_read=N_days
-    query_string = build_range_query(N_days, N_read, dB_name, rediskey_prefix,extra)
-    print(query_string)
-
-    # if database.name == 'last0':    
-    #     result = client.query(query_string)
-    #     df = pd.DataFrame(result.result_rows, columns=['rediskey', 'time', 'value']).set_index('rediskey')
-    # elif database.name == 'euclid':
-    result = client.execute(query_string)
-    df = pd.DataFrame(result, columns=["rediskey", "time", "value"]).set_index("rediskey")
-        
-    # Convert to DataFrame
     
-    print('loaded ', len(df), 'items')
-    print('Here is the first line:\n',df.tail(1))
-    print('\n')
-    return df
+class runconfig:   
+    '''
+    gernrates a run cofiguration object with all the config file sections.
+    See the toml config file
+    '''
+    # localrun:bool = None
+    # datbase:LastDatabase = None
+    # input_path:str = None
+    # output_path:str = None
+    # database_path:str = None
+    # Ndays:int = None
+    # Nshow:int = None
+    # startdate:str = None
+    # enddate:str = None
+    # fraction_to_read:float = None
+    
+    def __init__(self, cfg):
+        for key, value in cfg.items():
+            if isinstance(value, dict):
+                # Recursively convert nested dictionaries to objects
+                setattr(self, key, runconfig(value))
+            elif isinstance(value, list):
+                # Handle lists: convert dicts within lists to objects
+                new_list = []
+                for item in value:
+                    if isinstance(item, dict):
+                        new_list.append(runconfig(item))
+                    else:
+                        new_list.append(item)
+                setattr(self, key, new_list)
+            else:
+                setattr(self, key, value)
+    
+class DualLogger:
+    '''This class serves to log simultaneously to console + file'''
+    def __init__(self, filename):
+        self.terminal_stdout = sys.stdout
+        self.terminal_stderr = sys.stderr
+        self.log = open(filename, 'w', encoding='utf-8')
+
+        sys.stdout = self
+        sys.stderr = self
+
+    def write(self, message):
+        self.terminal_stdout.write(message)
+        self.log.write(message)
+
+    def flush(self):
+        self.terminal_stdout.flush()
+        self.log.flush()
+
+    def close(self):
+        sys.stdout = self.terminal_stdout
+        sys.stderr = self.terminal_stderr
+        self.log.close()
+   
+
+        
+def generate_time_span_str(Ndays:int,Nshow:int,startdate:str=None,enddate:str=None) -> str:
+    '''
+    Generate a string giving the dates of the time span of the queries based on ther inputs.
+    parameters:
+        Ndays = number of days before today an optional start date for the span
+        Nshow = the duuration in integer days from the start date
+        startdate = a simple string in the format dd/mm/yy for the start date
+        enddate = a single string in the format dd/mm/yy for the end date
+    returns:
+        time_span_str = a string describibg the time span in the format yymmdd_yymmdd 
+        where the first part is the start date and the second is the end date  
+        time span tuple (start-datedd-mm-yy,end-date dd-mm-yy)
+    '''
+    if startdate:
+        start_date = datetime.strptime(startdate,'%d/%m/%y')
+    elif Ndays:
+        start_date = datetime.now() - timedelta(days=Ndays)
+        start_date = start_date.replace(hour=12, minute=0, second=0, microsecond=0)
+    else:
+        raise Exception('Error: either start date or N_days must be given')
+    
+    if enddate:
+        end_date = datetime.strptime(enddate,'%d/%m/%y')
+    elif Nshow:
+        end_date = start_date + timedelta(days=Nshow)
+    else:
+        raise Exception('Error: either start date or N_days must be given')
+        
+   
+    # Compute end date (start_date + N_read days)
+    # Format for ClickHouse (YYYY-MM-DD HH:MM:SS)
+    start_str = start_date.strftime('%Y%m%d')
+    end_str   = end_date.strftime('%Y%m%d')
+    time_span_str = start_str + '_' + end_str
+    return  ( time_span_str,start_date.strftime('%d/%m/%Y'),end_date.strftime('%d/%m/%Y'))
+
+def save_df_to_csv(dfname:str,outdir:str, time_span_stamp:str,df:pd.DataFrame=None) -> str:
+    '''
+    Saves a pandas dataframe to a csv file in ther database dir
+    uses the timespan string ti tag the file
+    if the dataframe is not given the function generates the file name only 
+    Parameters
+    ----------
+    
+    dfname = a string with the data frame name
+    outdir= the path of the data base dir 
+    time_span_stamp : TYPE string
+        DESCRIPTION = a time span stamp that will be added to the file name
+    index = a flag to save an indexed dataframe default= True
+    df : TYPE pandas data frame
+        DESCRIPTION = the data frame to be saved
+        if df is None it just returns the csv filename
+    Returns the file name
+    -------
+    None.
+
+    '''
+    csv_file_name = time_span_stamp+'_'+dfname+'.csv'
+    if df is not None:
+        df.to_csv(os.path.join(outdir,csv_file_name))
+    return csv_file_name
 
 def read_DB1( client, db_name:str, rediskey_prefix:str, extra:str=None, 
              startdate:str=None, enddate:str=None, N_days:int =1, N_read:int=1):
     '''A general function for reading a given range of days from databse (dictionary with database details)
-    looking for rediskey prefix. Note, the extra parameter is not mandatory and
+    looking for rediskey prefix. Note, the extra parameter is  mandatory and
     is used to add another condition
     parameters:
         client = a clickhouse database client opened with the database.connect method
@@ -153,38 +258,121 @@ def read_DB1( client, db_name:str, rediskey_prefix:str, extra:str=None,
         print('\n')
     return df
 
+def read_visitDB( client, startdate:str=None, enddate:str=None, N_days:int=1, N_read:int=1)-> pd.DataFrame:
+    '''A function for reading a given range of days from visit.images database 
+    parameters:
+        client = a clickhouse database client opened with the database.connect method
+        startdate = start date (dd/mm/yy) for the database query if None N_days and N_read are used
+        enddate = end date  (dd/mm/yy) for the database query if None N_days and N_read are used
+        N_days is the number of days before present to search for (default = 1)
+        N_read limits the search to N_read days after the initial day, set to -1 for all (default = 1)
+        '''
+    (start_str,end_str) = generate_date_range_str(startdate, enddate, N_days, N_read)
+    query_string = f'''SELECT dateobs,mountnum,camnum,ra,dec,cropid,fwhm,med_a,med_b,med_th,airmass
+                       FROM last.visit_images 
+                       WHERE dateobs > '{start_str}'
+                       AND dateobs < '{end_str}' '''
+    print(query_string)
+    df = client.query_df(query_string)
+    if df.empty:
+        print('There is NO data in during the requested interval - stopping')
+        sys.exit()  
+    else: 
+        print('loaded %d items'%len(df))
+        print('Here is the first line:\n',df.tail(1))
+        print('\n')
+    return df   
+def telmap(cd:float)-> float:
+    """
+    Parameters
+    ----------
+    cd : float
+        vector of 24 values of crop image data ordered from 1 to 24
+        missing values in the vector  are replaced by nans
 
-def build_range_query(N_days, N_read, table: str, rediskey_prefix: str, extra_condition=None) -> str:
-    """ Build a ClickHouse SQL query for a given time range.
+    Returns 
+    -------
+    telmap : float a 6x4 matrix of the crop data arranged as a 2d image.
 
-    N_days : int       Number of days ago to start (start at 12:00:00 that day).
-    N_read : int       Number of days to include in the query range.
-    table : str        Name of the ClickHouse table (e.g., 'operation_strings').
-    rediskey_prefix : str  The prefix string for startsWith(rediskey, ...).
-    extra_condition (str, optional): Additional SQL condition to append to WHERE
-    Returns  query : str    SQL query string.  """
-    # Compute start date (N days ago at noon)
-    start_date = datetime.now() - timedelta(days=N_days)
-    start_date = start_date.replace(hour=12, minute=0, second=0, microsecond=0)
-    # Compute end date (start_date + N_read days)
-    end_date = start_date + timedelta(days=N_read)
-    # Format for ClickHouse (YYYY-MM-DD HH:MM:SS)
+    """
+    telmap = np.zeros([6,4])
+    cd = cd.astype(float)
+    telmap = np.array(
+             [[cd[5],cd[11],cd[17],cd[23]],
+              [cd[4],cd[10],cd[16],cd[22]],
+              [cd[3],cd[9],cd[15],cd[21]],
+              [cd[2],cd[8], cd[14],cd[20]],
+              [cd[1],cd[7],cd[13],cd[19]],
+              [cd[0],cd[6],cd[12],cd[18]]])
+    return telmap
+
+def plot_mount_telescope_maps(mountnum:int,vals:float,
+                              property_name:tuple, time_span_stamp:tuple,
+                              outdir:str) -> plt.Figure:
+    '''
+    Plots 4 telescope maps of  a mount with annotations 
+    of the values of vals and their stds
+    Parameters:
+        mountnum = the mount number
+        vals = a list of 4 vectors (one for each telescope)
+        of 24 float values extracted from the 24 crop images
+        property_name[0],[1] = string the mapped property and its units
+        time_span = a tuple of strings giving the time range of the data
+        time_span_str(0,1) = start date:str, end date:str
+        outdir = output directory to save the plots
+    Returns
+    -------
+    figure with 2x2 subplots of telescope maps.
+
+    '''
+    
+    mapfig,axs = plt.subplots(2,2,figsize = (12,10))
+    axs = axs.flatten()
+    for i, ax in enumerate(axs): # loop on telescopes
+        valsmap = telmap(vals[i])
+        # svalsmap = telmap(svals[i])
+        sns.heatmap(valsmap,
+                    vmin = np.nanmin(np.array(vals)),
+                    vmax = np.nanmax(np.array(vals)),
+                    annot=True,
+                    fmt = ".1f",
+                    cmap = 'inferno',
+                    ax= ax,
+                    cbar = False,
+                    square = True
+                    )
+        ax.set_title('Telscope %d %s %s'%((i+1),property_name[0],property_name[1]))
+    mapfig.suptitle(f"Mount {mountnum:d} {time_span_stamp[1]}-{time_span_stamp[2]} {property_name[0]}")
+    plt.tight_layout()
+    mapfig_filename = 'mount_%d_%s_%s_telmap.png'%(mountnum,time_span_stamp[0],property_name[0])
+    mapfig.savefig(os.path.join(outdir,mapfig_filename))
+    plt.show() # for debug
+    return mapfig
+    
+    
+
+def generate_date_range_str(startdate:str,enddate:str,ndays:int,nread:int)->tuple:
+    if nread == -1: nread=ndays
+    if startdate:
+        start_date = datetime.strptime(startdate,'%d/%m/%y').replace(hour=12, minute=0, second=0, microsecond=0)
+    elif ndays:
+        start_date = datetime.now() - timedelta(days=ndays)
+        start_date = start_date.replace(hour=12, minute=0, second=0, microsecond=0)
+    else:
+        raise Exception('Error: either start date or N_days must be given')
+    
+    if enddate:
+        end_date = datetime.strptime(enddate,'%d/%m/%y').replace(hour=12, minute=0, second=0, microsecond=0)
+    elif nread:
+        end_date = start_date + timedelta(days=nread)
+    else:
+        raise Exception('Error: either start date or N_days must be given')
+        
     start_str = start_date.strftime('%Y-%m-%d %H:%M:%S')
     end_str   = end_date.strftime('%Y-%m-%d %H:%M:%S')
+    date_range_str = (start_str,end_str)
+    return date_range_str
 
-    # Build query
-    query = f"""
-        SELECT * FROM {table}
-        WHERE startsWith(rediskey, '{rediskey_prefix}')
-          AND time > '{start_str}'
-          AND time < '{end_str}'    """
-    # add extra condition if provided
-    if extra_condition:
-        query += f" AND {extra_condition}"   
-    # always order by time descding
-    query += " ORDER BY time DESC "         
-    return query.strip()    
-    
 
 def build_range_query1( table:str, rediskey_prefix:str, extra_condition=None,
                               startdate:str=None, enddate:str=None, N_days:int=1, N_read:int=1) -> str:
@@ -232,39 +420,18 @@ def build_range_query1( table:str, rediskey_prefix:str, extra_condition=None,
         query += f" AND {extra_condition}"   
     # always order by time descding
     query += " ORDER BY time DESC "         
-    return query.strip()    
-class DualLogger:
-    '''This class serves to log simultaneously to console + file'''
-    def __init__(self, filename):
-        self.terminal_stdout = sys.stdout
-        self.terminal_stderr = sys.stderr
-        self.log = open(filename, 'w', encoding='utf-8')
-
-        sys.stdout = self
-        sys.stderr = self
-
-    def write(self, message):
-        self.terminal_stdout.write(message)
-        self.log.write(message)
-
-    def flush(self):
-        self.terminal_stdout.flush()
-        self.log.flush()
-
-    def close(self):
-        sys.stdout = self.terminal_stdout
-        sys.stderr = self.terminal_stderr
-        self.log.close()
+    return query.strip()  
+  
 
 
-def filter_columns_by_nan_or_empty_lists(df: pd.DataFrame, frac=0.1):
+def filter_columns_by_nan_or_empty_lists(df: pd.DataFrame, frac_nans=0.1):
     """ Removes columns that have more than frac NaNs or empty lists.
     Assumes that each column contains only NaNs or only empty lists, not both.
     Parameters: frac: Maximum allowed fraction NaNs = N_NaNs/ len(df)
     Returns:    tuple: (filtered DataFrame, list of removed column names) """
     
     N = len(df)
-    threshold = int(N * frac)
+    threshold = int(N * frac_nans)
     cols_to_remove = []
     for col in df.columns:
         col_data = df[col]
@@ -757,6 +924,7 @@ def separate_by_mount(df):
     Create a list with 10 elements, each a df. It checks if the index column has 3 elements,
     it removes the extra '1' in the middle. It creates mount and scope and adjusted_hour columns '''
     df = df.copy()
+    # df.set_index('rediskey')
     #remove rows that don't have the mount.scope correctly
     #df = df[df['mount'].str.match(r"^\d+\.\d+$")]
     #df = df[df.index.to_series().str.match(r"^\d+\.\d+$")]
@@ -995,7 +1163,8 @@ def plot_bad_fraction_per_day(df, time_col='TimeStarted', status_col='Status'):
     df['Day'] = df[time_col].astype(int)
 
     # Identify bad fits (Status NOT containing "Found.")
-    is_bad = ~df[status_col].astype(str).str.contains(r"Found\.", regex=True, na=False)
+    is_bad = ~df[status_col].astype(str).str.contains(r"Found\.",
+                                                      regex=True, na=False)
     df['is_bad'] = is_bad
 
     # Group by day and calculate fraction of bad fits
@@ -1020,66 +1189,77 @@ def plot_bad_fraction_per_day(df, time_col='TimeStarted', status_col='Status'):
     for day in label_days:
         # Add vertical line + dd-mm notation
         ax.axvline(day, color='gray', linestyle=':', alpha=0.5)
-        ax.text(day, 0.8, julian_to_ddmm(day), rotation=90, ha='center', va='bottom', fontsize=12, color='blue')
+        ax.text(day, 0.8, julian_to_ddmm(day), rotation=90, ha='center', 
+                va='bottom', fontsize=12, color='blue')
 
     plt.tight_layout()
     plt.show()
 
 #TODO seperate plot from data processing
-def plot_bestpos_vs_temp_by_mount(df:pd.DataFrame, output_directory:str,plots:dict,regular_fit:bool, x_axis:str, y_axis:str):
+
+
+def plot_bestpos_vs_temp_by_mount(df: pd.DataFrame, output_directory: str,
+                                  plots: dict, regular_fit: bool,
+                                  x_axis: str, y_axis: str) -> pd.DataFrame:
     """ Plots y-axis data vs. x-axis data.
-    It splits the data by mount number (int(indexes)) and plots nmounts (10) subplots.
+    It splits the data by mount number (int(indexes)) and plots nmounts (10) 
+    subplots.
     Each subplot includes 4 scopes (based on fractional part of indexes).
     The y-limits are set by the 99th percentile of y_axis for that mount.
     Then, a linear fit is performed for each trace and plotted and saved.
     Specifically for BestPos the tick numbers are shifted to place assure all 4 
-    scopes are in the same range with 150 tick spacing. The linear fit is either simple,
-    or with constraints + center + weight to favor clusters, see the definition in Main.
-    Different symbols are given for the first 12 days in a run. The first 2 hrs of 
-    observations are excluded (to reduce noise)
+    scopes are in the same range with 150 tick spacing. The linear fit is 
+    either simple,     or with constraints + center + weight to favor clusters,
+    see the definition in Main.     Different symbols are given for the 
+    first 12 days in a run. The first 2 hrs of observations are excluded
+    (to reduce noise)
     parameters:
         df =
         output_directory = folder for saving the plots
-        plots = a dictionary with boolean flags to determine which plots to plot
-    """   
+        plots = a runconfig object with boolean flags to determine which plots to 
+        plot
+    """
     data_for_distribution_plot = []
-    if y_axis =='minor': 
+    if y_axis == 'minor':
         dt = np.diff(df[x_axis])
-        gap_indices = np.where(dt >= 0.05)[0] +1
+        gap_indices = np.where(dt >= 0.05)[0] + 1
         start_indexes = np.insert(gap_indices, 0, 0)
         print(len(start_indexes), start_indexes)
-        if len(start_indexes): 
+        if len(start_indexes):
             col_idx = df.columns.get_loc('HH-MM-DD-mm')
             print(df.iloc[start_indexes, col_idx])
-            df = filter_1hr_after_start(df, start_indexes, 0.083) #filter out 2 hrs
+            df = filter_1hr_after_start(df, start_indexes, 0.083)
+            # filter out 2 hrs
     if y_axis == 'BestPos':
-        df = df[df['Status'] == 'Found.'].copy() #keep only focus data that is good
+        df = df[df['Status'] == 'Found.'].copy()
+        # keep only focus data that is good
         print()
     medians_list = []   # this is for exporting the median values
     indexes = df.index.to_numpy(dtype=float)
-    df = df.copy()    
+    df = df.copy()
     int_part, frac_part = np.divmod(indexes, 1)
     # Assign mount (0–9) and scope (0–3)
     df['mount'] = int_part.astype(int)
-    df['scope'] = np.round(frac_part * 10).astype(int) 
+    df['scope'] = np.round(frac_part * 10).astype(int)
     # Setup 10 mounts (0–9)
     fig, axes = plt.subplots(5, 2, figsize=(14, 20), sharex=True)
     axes = axes.flatten()
-    
+
     if 'TimeStarted' in df.columns:
         latest_time = julian_to_ddmm(df['TimeStarted'].max())
         earliest_time = julian_to_ddmm(df['TimeStarted'].min())
     elif 'time' in df.columns:
         latest_time = df['time'].max()
         earliest_time = df['time'].min()
-        
-    title = '' + y_axis + ' vs. ' + x_axis + ' for: ' + str(earliest_time) + ' --- ' + str(latest_time)
-    
+
+    title = '' + y_axis + ' vs. ' + x_axis + ' for: ' + \
+        str(earliest_time) + ' --- ' + str(latest_time)
+
     # Prepare to collect fit results
     fit_results = []
     high_values = []
     for mount_num in sorted(df['mount'].unique()):
-        ax = axes[mount_num-1]  #axes run from 0-9 and mount numbers are 1-10
+        ax = axes[mount_num-1]  # axes run from 0-9 and mount numbers are 1-10
         # Filter for this mount
         df_mount = df[df['mount'] == mount_num]
 
@@ -1089,8 +1269,9 @@ def plot_bestpos_vs_temp_by_mount(df:pd.DataFrame, output_directory:str,plots:di
         upper_limit_mount = median
 
         # Plot each scope
-        y_goal = [0, 34850, 34700, 34550,34400] # this places the traces one above the other spaced by 150
-        for scope_num in range(1,5):  #keeps scope names 1-4
+        # this places the traces one above the other spaced by 150
+        y_goal = [0, 34850, 34700, 34550, 34400]
+        for scope_num in range(1, 5):  # keeps scope names 1-4
             df_scope = df_mount[df_mount['scope'] == scope_num]
             if df_scope.empty:
                 print(f'mount {mount_num} scope {scope_num} is empty')
@@ -1101,12 +1282,13 @@ def plot_bestpos_vs_temp_by_mount(df:pd.DataFrame, output_directory:str,plots:di
             std = df_scope[y_axis].std()
             q99 = df_scope[y_axis].quantile(0.99)
             range99 = abs(q99 - median)
-            
+
             # Define lower and upper limits for filtering scope data and y-limit
-            #taking 3x 99 percentile makes sure all points are kept except for a crazy outlier
+            # taking 3x 99 percentile makes sure all points are kept except for
+            #a crazy outlier
             lower_limit = median - 3*range99
             upper_limit = median + 3*range99
-            
+
             # append a row
             if pd.isna(median):
                 median_int = None  # or keep as np.nan
@@ -1115,38 +1297,42 @@ def plot_bestpos_vs_temp_by_mount(df:pd.DataFrame, output_directory:str,plots:di
             if pd.isna(std):
                 std_int = None  # or keep as np.nan
             else:
-                std_int = int(std)    
+                std_int = int(std)
             medians_list.append({
                 'mount': mount_num,
                 'scope': scope_num,
                 'median': median_int,
-                'std': std_int   })
+                'std': std_int})
             date_range = str(earliest_time) + ' --- ' + str(latest_time)
             try:
                 if std_int > 10:
-                    data_for_distribution_plot.append((list(df_scope[y_axis]), 
-                            median_int, std_int, int(mount_num), scope_num, date_range))
-            except (NameError, TypeError):  # std_int is not defined or invalid (e.g., None)
-                pass           
+                    data_for_distribution_plot.append((list(df_scope[y_axis]),
+                                                       median_int, std_int, 
+                                                       int(mount_num), 
+                                                       scope_num, date_range))
+            except (NameError, TypeError): 
+                # std_int is not defined or invalid (e.g., None)
+                pass
             # Filter BestPos to within allowed range
-            df_scope = df_scope[(df_scope[y_axis] >= lower_limit) & 
-                    (df_scope[y_axis] <= upper_limit)]
+            df_scope = df_scope[(df_scope[y_axis] >= lower_limit) &
+                                (df_scope[y_axis] <= upper_limit)]
             '''Here can still split df_scope into separate days'''
             indexes = find_noon_rollover_indexes(df_scope)
-            #print(f'\n mount {mount_num} scope{scope_num} has {indexes}')
-            markers = ['o', '+', '^', 'D', 'P', '*', 'x', 'v', '<', '>', '.', 's']
+            # print(f'\n mount {mount_num} scope{scope_num} has {indexes}')
+            markers = ['o', '+', '^', 'D', 'P',
+                       '*', 'x', 'v', '<', '>', '.', 's']
             x = df_scope[x_axis].to_numpy()
-            #y = df_scope[y_axis].to_numpy() #absolute value of focus
+            # y = df_scope[y_axis].to_numpy() #absolute value of focus
             y = df_scope[y_axis].to_numpy()-median+y_goal[scope_num]
-            
+
             # Remove NaNs
             valid = ~np.isnan(x).flatten() & ~np.isnan(y)
             x = x[valid].reshape(-1, 1)  # <== FIX: reshape here again
             y = y[valid]
-            #print('valid pts:',len(y))    
+            # print('valid pts:',len(y))
             indexes = indexes + [len(y)]
-            
-            # Linear fit             
+
+            # Linear fit
             if len(x) >= 2:
                 if regular_fit:
                     '''For regular linear fit'''
@@ -1154,15 +1340,19 @@ def plot_bestpos_vs_temp_by_mount(df:pd.DataFrame, output_directory:str,plots:di
                 elif not constraints:
                     '''For fixed slope and calculate only intercept use:'''
                     slope_fixed = 18
-                    y_pred, R2, m, b, text = linear_fit_intercept_only(x,y,'col', slope_fixed)
+                    y_pred, R2, m, b, text = linear_fit_intercept_only(
+                        x, y, 'col', slope_fixed)
                 else:
-                    y_pred, R2, m, b, text  = fit_constrained_linear(x, y, 'col', \
-                    [constraints[0], constraints[1]], constraints[2], constraints[3], bandwidth=0.2)
-                #print(f"mount {mount_num} scope{scope_num}, b: {num_round_2(b)}, R²: {num_round_2(R2)}")
+                    y_pred, R2, m, b, text = fit_constrained_linear(x, y,'col',
+                                           [constraints[0], constraints[1]], 
+                                           constraints[2], constraints[3], 
+                                           bandwidth=0.2)
+                # print(f"mount {mount_num} scope{scope_num}, 
+                # b: {num_round_2(b)}, R²: {num_round_2(R2)}")
                 # Plot the fit line
-                if y_axis != 'minor': 
+                if y_axis != 'minor':
                     ax.plot(x, y_pred, color=colors[scope_num-1], linewidth=1)
-    
+
                 # Store fit results
                 fit_results.append({
                     'mount': mount_num,
@@ -1174,40 +1364,49 @@ def plot_bestpos_vs_temp_by_mount(df:pd.DataFrame, output_directory:str,plots:di
                 })
             # Scatter plot
             else:
-                m=0
-                #For plotting all the points in the same symbol
-                #ax.scatter(x, y, s=3, alpha=0.5, label=f'{scope_num} {num_round_2(m)} {num_round_2(R2,2)}')
-              
+                m = 0
+                # For plotting all the points in the same symbol
+                # ax.scatter(x, y, s=3, alpha=0.5, label=f'{scope_num} 
+                # {num_round_2(m)} {num_round_2(R2,2)}')
+
             # for separate symbols for different days:
             for i in range(len(indexes) - 1):
                 start = indexes[i]
                 end = indexes[i+1]
-                if 'R2' not in locals():  R2 = -1  #Make sure there is a value, to avoid errors if missing
+                if 'R2' not in locals():
+                    R2 = -1  # Make sure there is a value,to avoid errors 
+                    # if missing
                 ax.scatter(x[start:end], y[start:end],
-                            marker=markers[i % len(markers)], s=15, 
-                            color=colors[scope_num-1],
-                            label=f'{scope_num} {num_round_2(m)} {num_round_2(R2,2)}' if i == 0 else None)  # label only for first slice    
-                
-            lower_limit_mount = min(lower_limit_mount, lower_limit) 
-            upper_limit_mount = max(upper_limit_mount, upper_limit)  
-            if y_axis =='minor': 
+                           marker=markers[i % len(markers)], s=15,
+                           color=colors[scope_num-1],
+                           # label only for first slice
+                           label=
+                           f'{scope_num} {num_round_2(m)} {num_round_2(R2, 2)}'
+                           if i == 0 else None)
+
+            lower_limit_mount = min(lower_limit_mount, lower_limit)
+            upper_limit_mount = max(upper_limit_mount, upper_limit)
+            if y_axis == 'minor':
                 threshold = 3
                 if len(x) > 0:
-                    ax.plot([x.min(), x.max()], [threshold, threshold], color='black', linewidth=2)
+                    ax.plot([x.min(), x.max()], [threshold, threshold],
+                            color='black', linewidth=2)
                 lower_limit_mount = 1
                 upper_limit_mount = 4
                 temp = (mount_num, scope_num, len(x[y > threshold].tolist()))
                 high_values.append(temp)
-        
-        #ax.set_ylim([lower_limit_mount-extra_y, upper_limit_mount+extra_y]) #this is for absolute value of focus
-        ax.set_ylim([34250,35000])
+
+        # ax.set_ylim([lower_limit_mount-extra_y, upper_limit_mount+extra_y]) 
+        #this is for absolute value of focus
+        ax.set_ylim([34250, 35000])
         ax.set_title(f'Mount {mount_num}')
         ax.set_ylabel(y_axis)
         ax.grid(True, linestyle='--', alpha=0.3)
         if mount_num >= 8:
             ax.set_xlabel(x_axis)
         ax.legend(loc='upper left', fontsize=12)
-    if not regular_fit and not constraints: title = title + ' slope=' + str(slope_fixed)
+    if not regular_fit and not constraints:
+        title = title + ' slope=' + str(slope_fixed)
 
     fig.suptitle(title, fontsize=18, y=1.02)
     plt.tight_layout()
@@ -1215,22 +1414,25 @@ def plot_bestpos_vs_temp_by_mount(df:pd.DataFrame, output_directory:str,plots:di
     label = str('focus')
     plot_saving(output_directory, filename, label)
     plt.show()
-    
-    # Now we export the Fit_results to an excel file and color the "bad fit columns
-    write_append_cols_excel(fit_results)
-    
+
+    # Now we export the Fit_results to an excel file and color the 
+    #"bad fit columns
+    #TODO findout why this code
+    # write_append_cols_excel(fit_results,output_directory)
+
     df_high = pd.DataFrame(high_values, columns=['mount', 'scope', 'times'])
     # out = os.path.join(output_directory,(file_short + '_high.xlsx'))
-    out = os.path.join(output_directory,(f'{date_range}' + '_high.xlsx'))
+    out = os.path.join(output_directory, (f'{date_range}' + '_high.xlsx'))
     df_high.to_excel(out, index=False)
     df_medians = pd.DataFrame(medians_list)
-    file_name = os.path.join(output_directory,f'medians_BestPos_{date_range}.csv')
+    file_name = os.path.join(
+        output_directory, f'medians_BestPos_{date_range}.csv')
     df_medians.to_csv(file_name, index=False)
     print(f'saved medians to file:  medians_BestPos_{date_range}.csv')
-    if plots['Focus_distribution_and_median']:
+    if plots.Focus_distribution_and_median:
         for row in data_for_distribution_plot:
             plot_distribution_if_outliers(row)
-    
+
     return df_medians
 
 def plot_distribution_if_outliers(input_tuple):
@@ -1354,7 +1556,7 @@ def plot_tracking_results_1(tracking_results_groups,output_directory):
     #for i, df in enumerate(tracking_results_groups):
         #print(f"\nmount {i+1}: {df.shape[0]} rows")
 
-def plot_FWHM(FWHM_groups,output_directory):
+def plot_FWHM(FWHM_groups,output_directory,showplots=False):
     '''Plots minor width [pix] without filtering on 10 separate pages, one for each mount.
     Each plot has 4 scatters for the 4 telescopes.
     The x-axis is the adjusted_hour plotted for each night from 17:30-02:30 UTC'''
@@ -1367,7 +1569,7 @@ def plot_FWHM(FWHM_groups,output_directory):
             continue  # Skip empty groups            
         # Get the unique scope values (expecting 4)
         scopes = sorted(df['scope'].unique())
-        
+        plt.ioff()
         # Start plotting
         plt.figure(figsize=(10, 6))
         
@@ -1403,7 +1605,8 @@ def plot_FWHM(FWHM_groups,output_directory):
         filename = f'mount_{i+1}_FWHM'
         label = str('FWHM_no_averaging')
         plot_saving(output_directory, filename, label)
-        plt.show()
+        if showplots:
+            plt.show()
 
 
 def plot_tracking_results_2(tracking_results_groups,output_directory):
@@ -2082,7 +2285,7 @@ def mount_scope_medians(FWHM_groups,output_directory):
     return all_df
 
 
-def plot_alt_vs_hour(focus_groups:pd.DataFrame,output_directory:str):
+def plot_alt_vs_hour(focus_groups:list,output_directory:str):
     '''plots the Alt at which each mount performed focus at the different hours'''
     
     fig, ax = plt.subplots(figsize=(10, 6))  
