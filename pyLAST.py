@@ -38,9 +38,10 @@ import clickhouse_connect
 # A constant used in several funcions
 t0 = pd.Timestamp("1970-01-01T00:00:00")
 # The following colors are globally used for 4 traces (4 scopes) and for 10 mounts
-colors = ['red', 'green', 'blue', 'purple']
-colors_mounts = {"1": "red", "2": "green", "3": "blue", "4": "brown", "5": "pink", "6": "gray",    \
+tel_colors = ['red', 'green', 'blue', 'purple']
+mount_colors = {"1": "red", "2": "green", "3": "blue", "4": "brown", "5": "pink", "6": "gray",    \
           "7": "purple", "8": "orange", "9": "olive", "10": "cyan"}  # per mount  
+cropids =[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24]
 # constraints for fitting focus -temperature slopes 
 constraints =(-20., 23., 16., 0.1)   #first 2 are the rigid slope limits, the third is the center and the 4th is the weight
 fovdict ={'tl':[5,6,12],
@@ -281,7 +282,25 @@ def read_visitDB( client, startdate:str=None, enddate:str=None, N_days:int=1, N_
         print('loaded %d items'%len(df))
         print('Here is the first line:\n',df.tail(1))
         print('\n')
-    return df   
+    return df 
+def telmoments(crops:float) -> tuple:
+    """
+    input a vector of 24 crops of a telescope
+    calculates different metrics of the distribution 
+    of crop property values
+    m0 = mean FWHM at the 4 crops in the center
+    m1 - difference between the mean of values on 
+    the perimeter crops and m0
+    m2 - difference between max an min values on the perimeter
+    """
+    m0 = np.array([crops[9],crops[10],crops[15],crops[16]]).mean()
+    peridx = [1,2,3,4,5,6,7,12,13,18,19,20,21,22,23,24]-1
+    m1 = crops[peridx].mean()-m0
+    m2 = crops[peridx].max()-crops[peridx].min()
+        
+    moments =(m0,m1,m2)
+    return moments
+    
 def telmap(cd:float)-> float:
     """
     Parameters
@@ -306,9 +325,9 @@ def telmap(cd:float)-> float:
               [cd[0],cd[6],cd[12],cd[18]]])
     return telmap
 
-def plot_mount_telescope_maps(mountnum:int,vals:float,
+def plot_mount_telescope_maps(mountnum:int,vals:list,
                               property_name:tuple, time_span_stamp:tuple,
-                              outdir:str) -> plt.Figure:
+                              outdir:str):
     '''
     Plots 4 telescope maps of  a mount with annotations 
     of the values of vals and their stds
@@ -317,8 +336,9 @@ def plot_mount_telescope_maps(mountnum:int,vals:float,
         vals = a list of 4 vectors (one for each telescope)
         of 24 float values extracted from the 24 crop images
         property_name[0],[1] = string the mapped property and its units
-        time_span = a tuple of strings giving the time range of the data
-        time_span_str(0,1) = start date:str, end date:str
+        time_span_stamp = a tuple of strings giving the time range of the data
+            time_span_stamp[0] = time span string for file names 
+            time_span_stamp[1,2] = start date:str, end date:str)
         outdir = output directory to save the plots
     Returns
     -------
@@ -346,10 +366,133 @@ def plot_mount_telescope_maps(mountnum:int,vals:float,
     plt.tight_layout()
     mapfig_filename = 'mount_%d_%s_%s_telmap.png'%(mountnum,time_span_stamp[0],property_name[0])
     mapfig.savefig(os.path.join(outdir,mapfig_filename))
-    plt.show() # for debug
-    return mapfig
+    # plt.show() # for debug
+    return
+
+def telescope_scatterplot_per_mount(mountnum:int,xvals:list,yvals:list, 
+                              xproperty_name:tuple,
+                              yproperty_name:tuple,
+                              time_span_stamp:tuple,
+                              outdir:str):
+    """
+
+    Parameters
+    ----------
+    mountnum : int = mount number
+    xvals : float list of 4 vectors with xvalues
+    yvals : float list of 4 vectors with xvalues
+    xproperty_name : tuple
+    yproperty_name : tuple
+    time_span_stamp : tuple
+    outdir : str
+    Returns None.
+    """
+    scfig,axs = plt.subplots(2,2,figsize = (12,10))
+    axs = axs.flatten()
+    for i, ax in enumerate(axs):
+        ax.scatter(xvals[i],
+                    yvals[i],
+                    s=3,
+                    marker ='o',
+                    color = tel_colors[i]                
+          )
+        ax.set_title('Telscope %d %s %s'%
+                     ((i+1),yproperty_name[0],yproperty_name[1]),fontsize = 14)
+        ax.set_xlabel(f'{xproperty_name[0]} {xproperty_name[1]}',fontsize =14)
+        ax.set_ylabel(f'{yproperty_name[0]} {yproperty_name[1]}',fontsize =14)
+        ax.grid(True)
+        ax.tick_params(axis='both',labelsize=12)
+    scfig.suptitle(
+        f"Mount {mountnum:d} {time_span_stamp[1]}-{time_span_stamp[2]} {yproperty_name[0]}",
+        fontsize =18)
+    plt.savefig(os.path.join(outdir,f'M{mountnum}_{yproperty_name[0]}_vs_{xproperty_name[0]}.png'))
+    return
+
+
+def plot_tel_stats(vals:float,val_stds:float,tel_labels:list,
+                   property_name:tuple,time_span_stamp:tuple,
+                   color:str,
+                   outdir:str ) -> plt.Figure:
+    """
+    Plots bar chart of telescope statistics + error bars 
+    Parameters
+    ----------
+    vals : float = the values
+    val_stds : float = their stds
+    tel_labels : list = list of telescope labels (strings or numbers mount.telnum).
+    property_name : tuple (plotted rpoerty name,units) strings
+    time_span_stamp = a tuple of strings giving the time range of the data
+        time_span_stamp[0] = time span string for file names 
+        time_span_stamp[1,2] = start date:str, end date:str)
+    color : str = bar colors
+    outdir : str = output directory to save the plots
+    -------
     
+    """
     
+    fig,ax = plt.subplots(figsize=(20,8))
+    ax.bar(tel_labels,vals, color = color, capsize =4)
+    ax.errorbar(tel_labels,vals,
+                yerr = val_stds,
+                fmt='none', 
+                capsize =0, 
+                color='red')
+    ax.grid(axis='y')
+    ax.tick_params(axis='x',labelsize=10)
+    ax.tick_params(axis='y',labelsize=12)
+    ax.set_ylabel('%s %s'%(property_name[0],property_name[1]),fontsize=14)
+    ax.set_xlabel('Telescope Label',fontsize =14)
+    ax.set_title(f'{property_name[0]} telescope stats {time_span_stamp[1]} - {time_span_stamp[2]}', fontsize = 18)
+    plt.savefig(os.path.join(outdir,property_name[0]+'_telescope_stats.png'))
+    return
+    
+def plot_property_vs_cropid_per_mount(vals:float,val_stds:float,
+                                      mountnum:int,
+                                      property_name:tuple,time_span_stamp:tuple,
+                                      outdir:str ):
+    """
+    Parameters
+    ----------
+    vals : float a 4 element list of vectors of 24 float elements
+    val_stds : float a 4 element list of vectors of 24 float elements
+    cropids : int = crop ids 1:24
+    property_name : tuple (plotted rpoerty name,units) strings
+    time_span_stamp = a tuple of strings giving the time range of the data
+        time_span_stamp[0] = time span string for file names 
+        time_span_stamp[1,2] = start date:str, end date:str)
+    outdir : str = output directory to save the plots
+    Returns
+    -------
+
+    """
+    
+    fig,ax = plt.subplots(figsize=(12,8))
+    i=0
+    for curvals,curstds,curcolor in zip(vals,val_stds,tel_colors):
+        i+=1
+        ax.errorbar(cropids,curvals,
+                    yerr = curstds,
+                    marker = 'o',
+                    linestyle ='-',
+                    markersize = 4,
+                    capsize =2, 
+                    color=curcolor,
+                    label = f'tel {i}')          
+    ax.grid(axis='both')
+    ax.legend(fontsize =12)
+    ax.tick_params(axis='x',labelsize=12)
+    ax.tick_params(axis='y',labelsize=12)
+    ax.set_xticks(cropids)
+    ax.set_xticklabels(cropids)
+    ax.set_xlim([0,25])
+    ax.set_ylabel('%s %s'%(property_name[0],property_name[1]),fontsize=14)
+    ax.set_xlabel('cropid',fontsize =14)
+    ax.set_title(f'Mount {mountnum}: {property_name[0]} stats {time_span_stamp[1]} - {time_span_stamp[2]}', fontsize = 18)
+    plt.savefig(os.path.join(outdir,f'M{mountnum} {property_name[0]}'+'_cropid_stats.png'))
+    return
+
+
+
 
 def generate_date_range_str(startdate:str,enddate:str,ndays:int,nread:int)->tuple:
     if nread == -1: nread=ndays
@@ -1351,7 +1494,7 @@ def plot_bestpos_vs_temp_by_mount(df: pd.DataFrame, output_directory: str,
                 # b: {num_round_2(b)}, R²: {num_round_2(R2)}")
                 # Plot the fit line
                 if y_axis != 'minor':
-                    ax.plot(x, y_pred, color=colors[scope_num-1], linewidth=1)
+                    ax.plot(x, y_pred, color=tel_colors[scope_num-1], linewidth=1)
 
                 # Store fit results
                 fit_results.append({
@@ -1378,7 +1521,7 @@ def plot_bestpos_vs_temp_by_mount(df: pd.DataFrame, output_directory: str,
                     # if missing
                 ax.scatter(x[start:end], y[start:end],
                            marker=markers[i % len(markers)], s=15,
-                           color=colors[scope_num-1],
+                           color=tel_colors[scope_num-1],
                            # label only for first slice
                            label=
                            f'{scope_num} {num_round_2(m)} {num_round_2(R2, 2)}'
@@ -1578,7 +1721,7 @@ def plot_FWHM(FWHM_groups,output_directory,showplots=False):
             plt.scatter(
                 sub_df['adjusted_hour'],
                 sub_df['minor'],
-                color=colors[j],
+                color=tel_colors[j],
                 label=f'Scope: {scope}',
                 marker='.',
                 s=6,
@@ -1760,7 +1903,7 @@ def plot_tracking_results_3(tracking_results_groups, focus_groups,output_directo
         for j in range(1, 5):
             col = f'minor_{j}'
             if col in df.columns:
-                ax.scatter(df['adjusted_hour'], df[col], s=6, color=colors[j - 1], alpha=0.7, label=col)
+                ax.scatter(df['adjusted_hour'], df[col], s=6, color=tel_colors[j - 1], alpha=0.7, label=col)
         
         # Axis labels and title
         ax.set_xlabel('Start Hour')
@@ -2047,7 +2190,7 @@ def plot_KDE(df, mount, column, output_directory, scopes=[1,2,3,4], bw_adjust=1)
     
     plt.figure(figsize=(10,6))
 
-    for scope, color in zip(scopes, colors):
+    for scope, color in zip(scopes, tel_colors):
         subset = df[(df["mount"] == mount) & (df["scope"] == scope)][column].dropna()
         if len(subset) == 0:
             continue
@@ -2138,7 +2281,7 @@ def plot_jumps(jumps,output_directory):
     
     for scope, row in counts_sorted.iterrows():
         mount, sc = scope.split(".")
-        color = colors_mounts.get(mount, "black")
+        color = mount_colors.get(mount, "black")
         for b in labels:
             if b in row and not pd.isna(row[b]):
                 plt.scatter(scope, row[b], marker=markers[b], color=color, s=60)
@@ -2323,7 +2466,7 @@ def plot_alt_vs_hour(focus_groups:list,output_directory:str):
             markersize=10,
             linewidth=0.5,
             label=f"Mount {mount_idx}",
-            color=colors_mounts.get(str(mount_idx), "black")
+            color=mount_colors.get(str(mount_idx), "black")
         )
 
     ax.set_xlabel("Adjusted Hour [H]")
