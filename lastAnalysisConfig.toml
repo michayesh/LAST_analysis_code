@@ -21,19 +21,25 @@ Temp_analysis = true
 # type of fit for focus vs temperature fits
 regular_fit = true 
 constraints = false
+
 [plots]
+vimg_FWHM_tel_maps = true                   # LAST_Image quality
+vimg_axis_ratio_tel_maps = false             # LAST_Image quality
+vimg_FWHM_tel_stats = false              # LAST_Image quality
+vimg_FWHM_vs_cropid =false               # LAST_Image quality
+vimg_FWHM_vs_airmass =false               # LAST_Image quality
 FWHM_no_filter = false                  #(5) FWHM analysis
-FWHM_RA_Dec_focus = true               #(4)  FWHM analysis
-fraction_bad_focus = true              #(6)
-RA_Dec_std = true                     #(1),(2)
-RA_Dec = true                          #(3)
-Focus_temperature_slope = true         #(7)
+FWHM_RA_Dec_focus = false               #(4)  FWHM analysis
+fraction_bad_focus = false              #(6)
+RA_Dec_std = false                     #(1),(2)
+RA_Dec = false                          #(3)
+Focus_temperature_slope = false         #(7)
 Focus_distribution_and_median = false   #(8)
-Alt_for_each_Focus = true              #(9)
-number_of_jumps = true                 #(10)
-correlation_jumps_Az_Alt = true        #(11)
-mean_FWHM = true                       #(12)
-KDE_delta_Minor = true   
+Alt_for_each_Focus = false              #(9)
+number_of_jumps = false                 #(10)
+correlation_jumps_Az_Alt = false        #(11)
+mean_FWHM = false                       #(12)
+KDE_delta_Minor = false   
 
 [databases.euclid]
 name = 'euclid'

@@ -148,7 +148,9 @@ class DualLogger:
         sys.stderr = self.terminal_stderr
         self.log.close()
    
-
+def debugger_is_active() -> bool:
+    """Return if the debugger is currently active."""
+    return hasattr(sys, 'gettrace') and sys.gettrace() is not None
         
 def generate_time_span_str(Ndays:int,Nshow:int,startdate:str=None,enddate:str=None) -> str:
     '''
@@ -282,23 +284,37 @@ def read_visitDB( client, startdate:str=None, enddate:str=None, N_days:int=1, N_
         print('loaded %d items'%len(df))
         print('Here is the first line:\n',df.tail(1))
         print('\n')
-    return df 
+    return df
+def find_missing_crops(crop_list):
+    """
+    Finds the missing crops from a crop list.
+    """
+    crops_set = set(crop_list)
+    full_crop_list = [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24]
+    full_crop_set = set(full_crop_list)
+    # The difference() method finds elements in the first set not present in the second
+    missing_crops = sorted(full_crop_set.difference(crops_set))
+    return missing_crops
 def telmoments(crops:float) -> tuple:
     """
-    input a vector of 24 crops of a telescope
+    input = a vector of 24 crops of a telescope
     calculates different metrics of the distribution 
     of crop property values
+    returns
+    moments = tuple with the following elements
+    m = mean over all crops
     m0 = mean FWHM at the 4 crops in the center
     m1 - difference between the mean of values on 
     the perimeter crops and m0
     m2 - difference between max an min values on the perimeter
     """
-    m0 = np.array([crops[9],crops[10],crops[15],crops[16]]).mean()
-    peridx = [1,2,3,4,5,6,7,12,13,18,19,20,21,22,23,24]-1
-    m1 = crops[peridx].mean()-m0
-    m2 = crops[peridx].max()-crops[peridx].min()
+    m = np.array(crops).mean()
+    center = np.array([crops[9],crops[10],crops[15],crops[16]]).mean()
+    peridx = np.array([1,2,3,4,5,6,7,12,13,18,19,20,21,22,23,24])-1
+    depth = crops[peridx].mean()-center
+    perivar = crops[peridx].max()-crops[peridx].min()
         
-    moments =(m0,m1,m2)
+    moments =(m,center,depth,perivar)
     return moments
     
 def telmap(cd:float)-> float:
@@ -856,36 +872,36 @@ def highlight_bad_slope(column):
     return ['background-color: red' if (v < slope_min or v > slope_max) else '' for v in column]
     
 
-def write_append_cols_excel(Fit_results,output_directory):
-    '''Exports the output to excel. When repeated, in order
-    to append columns next to previously placed columns, the initial export is
-    first imported and then the startcol is adjusted after the existing data'''
-    
-    out = os.path.join(output_directory,(file_short + '_Fit_results.xlsx'))
-    Fit_results = pd.DataFrame(Fit_results)
-    #styled = Fit_results.style.map(highlight_bad_R2, subset=['R2_score'])
-    #styled = Fit_results.style.map(highlight_bad_slope, subset=['slope'])
-    styled = (Fit_results.style.apply(highlight_bad_R2, subset=['R2_score'])
-              .apply(highlight_bad_slope, subset=['slope'])  )
-    
-    # Check if file exists
-    if os.path.exists(out):
-        # Load existing workbook
-        wb = load_workbook(out)
-        ws = wb.active  
-        start_col = ws.max_column  # append after last existing column
-        existing_df = pd.read_excel(out, sheet_name=ws.title)
-        
-        with pd.ExcelWriter(out, engine='openpyxl', mode='a', if_sheet_exists='overlay') as writer:
-            styled.to_excel(writer, sheet_name=ws.title, index=False, header=True, startcol=start_col)
-            # Compute ratio between matching columns (only for numeric ones)
-        common_cols = Fit_results.columns.intersection(existing_df.columns)
-        
-    else:
-        # File doesn't exist: create new file with styled DataFrame
-        styled.to_excel(out, engine='openpyxl')
-
-
+# def write_append_cols_excel(Fit_results,output_directory):
+#     '''Exports the output to excel. When repeated, in order
+#     to append columns next to previously placed columns, the initial export is
+#     first imported and then the startcol is adjusted after the existing data'''
+#
+#     out = os.path.join(output_directory,(file_short + '_Fit_results.xlsx'))
+#     Fit_results = pd.DataFrame(Fit_results)
+#     #styled = Fit_results.style.map(highlight_bad_R2, subset=['R2_score'])
+#     #styled = Fit_results.style.map(highlight_bad_slope, subset=['slope'])
+#     styled = (Fit_results.style.apply(highlight_bad_R2, subset=['R2_score'])
+#               .apply(highlight_bad_slope, subset=['slope'])  )
+#
+#     # Check if file exists
+#     if os.path.exists(out):
+#         # Load existing workbook
+#         wb = load_workbook(out)
+#         ws = wb.active
+#         start_col = ws.max_column  # append after last existing column
+#         existing_df = pd.read_excel(out, sheet_name=ws.title)
+#
+#         with pd.ExcelWriter(out, engine='openpyxl', mode='a', if_sheet_exists='overlay') as writer:
+#             styled.to_excel(writer, sheet_name=ws.title, index=False, header=True, startcol=start_col)
+#             # Compute ratio between matching columns (only for numeric ones)
+#         common_cols = Fit_results.columns.intersection(existing_df.columns)
+#
+#     else:
+#         # File doesn't exist: create new file with styled DataFrame
+#         styled.to_excel(out, engine='openpyxl')
+#
+#
 def keep_2_elements_only(s):
     '''removes centeral number only if it is = 1
     This function is used to remove redundant '1' in the mount.telescope numbers '''
@@ -893,7 +909,7 @@ def keep_2_elements_only(s):
     parts = s.split('.')
     if len(parts) == 3 and parts[1]=='1':
         return f"{parts[0]}.{parts[2]}"
-    return s 
+    return s
 
 
 def load_FWHM_csv(input_file, fraction_to_read, start_reading_at_frac):
@@ -2179,37 +2195,37 @@ def get_minor_series(focus_times, tracking_results_groups):
     return pd.DataFrame(results), pd.DataFrame(jumps)
 
 
-def plot_KDE(df, mount, column, output_directory, scopes=[1,2,3,4], bw_adjust=1):
-    """ Plot KDE curves for a given mount and column, for the different scopes.
-    Parameters:
-    - df : DataFrame
-    - mount : int, mount number to filter
-    - column : str, column name to plot
-    - scopes : list of int, scopes to include
-    - bw_adjust : float, smoothing parameter for KDE """
-    
-    plt.figure(figsize=(10,6))
-
-    for scope, color in zip(scopes, tel_colors):
-        subset = df[(df["mount"] == mount) & (df["scope"] == scope)][column].dropna()
-        if len(subset) == 0:
-            continue
-        sns.kdeplot(subset, color=color, lw=2, label=f"scope {scope}", bw_adjust=bw_adjust, warn_singular=False)
-
-    plt.title(f"KDE of {column} for mount={mount}, [max(FWHM)-min(FWHM)] between adjacent focuses")
-    plt.xlabel(column)
-    plt.xlim(-2,7)
-    plt.ylabel("Density")
-    plt.grid(True, linestyle="--", alpha=0.7)
-    handles, labels = plt.gca().get_legend_handles_labels()
-    if labels:
-        plt.legend() # THE IF helps avoid warning when no data available
-    plt.tight_layout()
-    filename = f'mount_{i+1}_{col_name}'
-    label = f'histograms {col_name}'
-    plot_saving(output_directory, filename, label)
-    plt.show()
-  
+# def plot_KDE(df, mount, column, output_directory, scopes=[1,2,3,4], bw_adjust=1):
+#     """ Plot KDE curves for a given mount and column, for the different scopes.
+#     Parameters:
+#     - df : DataFrame
+#     - mount : int, mount number to filter
+#     - column : str, column name to plot
+#     - scopes : list of int, scopes to include
+#     - bw_adjust : float, smoothing parameter for KDE """
+#
+#     plt.figure(figsize=(10,6))
+#
+#     for scope, color in zip(scopes, tel_colors):
+#         subset = df[(df["mount"] == mount) & (df["scope"] == scope)][column].dropna()
+#         if len(subset) == 0:
+#             continue
+#         sns.kdeplot(subset, color=color, lw=2, label=f"scope {scope}", bw_adjust=bw_adjust, warn_singular=False)
+#
+#     plt.title(f"KDE of {column} for mount={mount}, [max(FWHM)-min(FWHM)] between adjacent focuses")
+#     plt.xlabel(column)
+#     plt.xlim(-2,7)
+#     plt.ylabel("Density")
+#     plt.grid(True, linestyle="--", alpha=0.7)
+#     handles, labels = plt.gca().get_legend_handles_labels()
+#     if labels:
+#         plt.legend() # THE IF helps avoid warning when no data available
+#     plt.tight_layout()
+#     filename = f'mount_{i+1}_{col_name}'
+#     label = f'histograms {col_name}'
+#     plot_saving(output_directory, filename, label)
+#     plt.show()
+#
 
 def smoothness_score(trace):
     '''A helper function to return the std of the fluctuations of a trace'''
@@ -2356,76 +2372,76 @@ def angular_distance(alt1_deg, az1_deg, alt2_deg, az2_deg):
     return math.degrees(d)
 
 
-def mount_scope_medians(FWHM_groups,output_directory):
-    """  Take a list of DataFrames and calculate median 'minor' for each scope in each df.
-    Returns a single DataFrame with columns:
-      index (1..N), mount, scope, avg_minor    
-   Optionally merges saved data with the current data   
-      """
-      
-    rows = []   
-    for df in FWHM_groups:
-        if "mount" not in df.columns or "scope" not in df.columns or "minor" not in df.columns:
-            continue  # skip if required columns missing
-        
-        temp = df['HH-MM-DD-mm'].dropna().astype(str).max()
-        parts = str(temp).split('_')
-        earliest = ''.join(parts[-2:]) 
-        temp   = df['HH-MM-DD-mm'].dropna().astype(str).min()
-        parts = str(temp).split('_')
-        latest = ''.join(parts[-2:]) 
-        #I don't know why, but this kept on giving an error
-        #earliest = df["time"].min().strftime("%d_%m")
-        #latest = df["time"].max().strftime("%d_%m") 
-        grouped = df.groupby(["mount", "scope"])["minor"].median().round(3).reset_index(name="avg_minor")
-        rows.append(grouped)
-    
-    # Combine all
-    all_df = pd.concat(rows, ignore_index=True)
-    # Ensure mount and scope are strings
-    all_df["mount_str"] = all_df["mount"].astype(int).astype(str)
-    all_df["scope_str"] = all_df["scope"].astype(int).astype(str)
-    # Format mount with leading zero if needed
-    all_df["mount_str"] = all_df["mount_str"].str.zfill(2)   
-    all_df["mount_scope"] = all_df["mount_str"] + "." + all_df["scope_str"]
-    #TODO take out the plot to a function
-    # def plotXXXXX(all_df:pd.DataFrame)
-    # plt.figure(figsize=(10, 5))
-    # #TODO  generalize to num of mounts
-    # for _, row in all_df.iterrows():
-    #     mount = str(int(row["mount"]))  # e.g., "1","2",..."10"
-    #     label = row["mount_scope"]
-    #     value = row["avg_minor"]
-    #     plt.scatter(label, value, color=colors_mounts.get(mount, "black"), s=80 )       
-    # title = 'Median FWHM vs Mount.Scope for ' + earliest + ' --- ' + latest 
-    # plt.xlabel("Mount.Scope")
-    # plt.ylabel("Median Minor (avg_minor)")
-    # plt.title(title)
-    # plt.grid(True, linestyle="--", alpha=0.4)
-    # plt.xticks(rotation=90)   
-    # plt.tight_layout()
-    # filename = f'median_FWHM_all_scopes {earliest}-{latest}'
-    # label = str('median_FWHM')
-    # plot_saving(output_directory, filename, label)
-    # plt.show()
-
-    # Sort by mount, then scope
-    all_df = all_df.sort_values(["mount", "scope"]).reset_index(drop=True)
-    
-    # Add running index starting from 1
-    all_df.index = all_df.index + 1
-    all_df.index.name = "index"
-    if plot_Focus_temperature_slope: # can only merge if indeed ran focus_temperature fit
-        file = os.path.join(output_directory,(file_short + '_Fit_results.xlsx'))
-        df_R2 = pd.read_excel(file, usecols=["mount", "scope","slope", "R2_score"])
-        # Merge on (mount, scope)
-        all_df = pd.merge(
-            all_df,
-            df_R2,
-            on=["mount", "scope"],
-            how="left"   # keep all rows from all_df
-        )
-    return all_df
+# def mount_scope_medians(FWHM_groups,output_directory):
+#     """  Take a list of DataFrames and calculate median 'minor' for each scope in each df.
+#     Returns a single DataFrame with columns:
+#       index (1..N), mount, scope, avg_minor
+#    Optionally merges saved data with the current data
+#       """
+#
+#     rows = []
+#     for df in FWHM_groups:
+#         if "mount" not in df.columns or "scope" not in df.columns or "minor" not in df.columns:
+#             continue  # skip if required columns missing
+#
+#         temp = df['HH-MM-DD-mm'].dropna().astype(str).max()
+#         parts = str(temp).split('_')
+#         earliest = ''.join(parts[-2:])
+#         temp   = df['HH-MM-DD-mm'].dropna().astype(str).min()
+#         parts = str(temp).split('_')
+#         latest = ''.join(parts[-2:])
+#         #I don't know why, but this kept on giving an error
+#         #earliest = df["time"].min().strftime("%d_%m")
+#         #latest = df["time"].max().strftime("%d_%m")
+#         grouped = df.groupby(["mount", "scope"])["minor"].median().round(3).reset_index(name="avg_minor")
+#         rows.append(grouped)
+#
+#     # Combine all
+#     all_df = pd.concat(rows, ignore_index=True)
+#     # Ensure mount and scope are strings
+#     all_df["mount_str"] = all_df["mount"].astype(int).astype(str)
+#     all_df["scope_str"] = all_df["scope"].astype(int).astype(str)
+#     # Format mount with leading zero if needed
+#     all_df["mount_str"] = all_df["mount_str"].str.zfill(2)
+#     all_df["mount_scope"] = all_df["mount_str"] + "." + all_df["scope_str"]
+#     #TODO take out the plot to a function
+#     # def plotXXXXX(all_df:pd.DataFrame)
+#     # plt.figure(figsize=(10, 5))
+#     # #TODO  generalize to num of mounts
+#     # for _, row in all_df.iterrows():
+#     #     mount = str(int(row["mount"]))  # e.g., "1","2",..."10"
+#     #     label = row["mount_scope"]
+#     #     value = row["avg_minor"]
+#     #     plt.scatter(label, value, color=colors_mounts.get(mount, "black"), s=80 )
+#     # title = 'Median FWHM vs Mount.Scope for ' + earliest + ' --- ' + latest
+#     # plt.xlabel("Mount.Scope")
+#     # plt.ylabel("Median Minor (avg_minor)")
+#     # plt.title(title)
+#     # plt.grid(True, linestyle="--", alpha=0.4)
+#     # plt.xticks(rotation=90)
+#     # plt.tight_layout()
+#     # filename = f'median_FWHM_all_scopes {earliest}-{latest}'
+#     # label = str('median_FWHM')
+#     # plot_saving(output_directory, filename, label)
+#     # plt.show()
+#
+#     # Sort by mount, then scope
+#     all_df = all_df.sort_values(["mount", "scope"]).reset_index(drop=True)
+#
+#     # Add running index starting from 1
+#     all_df.index = all_df.index + 1
+#     all_df.index.name = "index"
+#     if plot_Focus_temperature_slope: # can only merge if indeed ran focus_temperature fit
+#         file = os.path.join(output_directory,(file_short + '_Fit_results.xlsx'))
+#         df_R2 = pd.read_excel(file, usecols=["mount", "scope","slope", "R2_score"])
+#         # Merge on (mount, scope)
+#         all_df = pd.merge(
+#             all_df,
+#             df_R2,
+#             on=["mount", "scope"],
+#             how="left"   # keep all rows from all_df
+#         )
+#     return all_df
 
 
 def plot_alt_vs_hour(focus_groups:list,output_directory:str):
