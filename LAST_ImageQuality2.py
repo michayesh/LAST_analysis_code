@@ -16,6 +16,9 @@ import pandas as pd
 # import numpy as np
 from datetime import datetime
 import os
+from tqdm import tqdm
+import matplotlib
+matplotlib.use('Qt5Agg') # or 'TkAgg'
 from matplotlib import pyplot as plt
 
 from pyLAST import debugger_is_active
@@ -42,7 +45,7 @@ nmounts = runcfg.general.nmounts
 run = runcfg.run
 plots = runcfg.plots    
 localrun = runcfg.general.localrun
-
+fwhm_percentile = runcfg.general.fwhm_percentile
 timestamp = datetime.now().strftime('%y%m%d%H%M')
 # generate a directory for the current run:
     # for plots 
@@ -87,50 +90,81 @@ else:
 
 # Accessing a specific sub-DataFrame
 # print(grouped_dfs['B'])
+# if localrun:
+#     imq_csv_file_name = pla.save_df_to_csv(df = None,
+#                                                dfname='imq_df',
+#                                                outdir= db_out_path,
+#                                                time_span_stamp = time_span_stamp[0])
+#     imq_df = pd.read_csv(os.path.join(db_out_path,imq_csv_file_name))
+# else:
 
-
-# mountlist = [group for name, group in vimg_df.groupby('mountnum')]
-obslist = [group for name, group in vimg_df.groupby('dateobs')]
-
-imqdictlist =[] # empty list of dicts
-for curobs in obslist:
-    #for each obsdate in principle cam be several mounts and telescopes in the group
-    # separate to mounts
-    mountlist = [group for name, group in curobs.groupby('mountnum')]
-    for mount in mountlist:
-        mountnum = int(mount['mountnum'].mean())
-        # if pla.debugger_is_active():
-        # print(f'Analysing mount {mountnum}')
-        tel_list = [group for name, group in mount.groupby('camnum')]
-        for tel in tel_list:
-            telnum = int(tel['camnum'].mean())
+if not runcfg.general.imq_df_exists:
+    obslist = [group for name, group in vimg_df.groupby('dateobs')]
+    imqdictlist =[] # empty list of dicts
+    for index,curobs in tqdm(enumerate(obslist),total=len(obslist)):
+        #for each obsdate in principle cam be several mounts and telescopes in the group
+        # separate to mounts
+        mountlist = [group for name, group in curobs.groupby('mountnum')]
+        for mount in mountlist:
+            mountnum = int(mount['mountnum'].mean())
             # if pla.debugger_is_active():
-            # print(f'Analysing tel {telnum}')
-            # find if some of the cropid's are missing
-            missing_crops = pla.find_missing_crops(tel['cropid'].values)
-            if len(missing_crops)>0:
-                print(f'M{mountnum}T{telnum}:Missing crops on {tel['dateobs'].iloc[0]}: {missing_crops}')
-                continue
-            #  generate the cropid 24 element fwhm vector
-            fwhmvec = tel['fwhm'].values
-            # generate the various metrics from this vector
-            metrics = pla.telmoments(fwhmvec)
-            # populate a dict with the data variables
-            rowdict ={'dateobs':tel['dateobs'].iloc[0],
-                      'mountnum':mountnum,
-                      'telnum':telnum,
-                      'ra_mean':tel['ra'].mean(),
-                      'ra_std':tel['ra'].std(),
-                      'dec_mean':tel['dec'].mean(),
-                      'dec_std':tel['dec'].std(),
-                      'airmass': tel['airmass'].mean(),
-                      'fwhm_mean':metrics[0],
-                      'fwhm_center':metrics[1],
-                      'fwhm_depth':metrics[2],
-                      'fwhm_perivar':metrics[3]
-                      }
-    imqdictlist.append(rowdict)
-imq_df = pd.DataFrame(imqdictlist)
+            # print(f'Analysing mount {mountnum}')
+            tel_list = [group for name, group in mount.groupby('camnum')]
+            for tel in tel_list:
+                telnum = int(tel['camnum'].mean())
+                # if pla.debugger_is_active():
+                # print(f'Analysing tel {telnum}')
+                # find if some of the cropid's are missing
+                missing_crops = pla.find_missing_crops(tel['cropid'].values)
+                if len(missing_crops)>0:
+                    # print(f'M{mountnum}T{telnum}:Missing crops on {tel['dateobs'].iloc[0]}: {missing_crops}')
+                    continue
+                #  generate the cropid 24 element fwhm vector
+                fwhmvec = tel['fwhm'].values
+                # generate the various metrics from this vector
+                metrics = pla.telmoments(fwhmvec)
+                # populate a dict with the data variables
+                rowdict ={'dateobs':tel['dateobs'].iloc[0],
+                          'mountnum':mountnum,
+                          'telnum':telnum,
+                          'ra_mean':tel['ra'].mean(),
+                          'ra_std':tel['ra'].std(),
+                          'dec_mean':tel['dec'].mean(),
+                          'dec_std':tel['dec'].std(),
+                          'airmass': tel['airmass'].mean(),
+                          'fwhm_mean':metrics[0],
+                          'fwhm_center':metrics[1],
+                          'fwhm_depth':metrics[2],
+                          'fwhm_perivar':metrics[3],
+                          'fwhm_updown':metrics[4],
+                          'fwhm_rightleft':metrics[5],
+                          'fwhm_xuldr':metrics[6],
+                          'fwhm_xurdl':metrics[7]
+                          }
+        imqdictlist.append(rowdict)
+        # i+=1
+        # print('%.1f \n'%(i/num_of_obs*100))
+    imq_df = pd.DataFrame(imqdictlist)
+    imq_df_csv_file_name = pla.save_df_to_csv(df = imq_df,
+                                       dfname='imq_df',
+                                       outdir= db_out_path,
+                                       time_span_stamp = time_span_stamp[0])
+    print(f'saved data in: \n {imq_df_csv_file_name}\n')
+else:
+    imq_df_csv_file_name = pla.save_df_to_csv(df=None,
+                                          dfname='imq_df',
+                                          outdir= db_out_path,
+                                          time_span_stamp = time_span_stamp[0])
+    imq_df = pd.read_csv(os.path.join(db_out_path,imq_df_csv_file_name))
+if plots.imq_metrics_vs_airmass:
+    pla.plot_imq_metrics_vs_airmass(imq_df,
+                                    fwhm_percentile = fwhm_percentile,
+                                    time_span_stamp =time_span_stamp,
+                                    outdir = outdir)
+print('Finished')
+
+
+# plot the metrics vs airmass
 # imq =pd.DataFrame(columns =['mount','tel','crop','meanfwhm','stdfwhm'])
 # mountdict = {group_key: group_df for group_key, group_df in vimg_df.groupby('mountnum')}
 # mountlist =[mountdict[key] for key in mountdict.keys()]
@@ -313,4 +347,3 @@ imq_df = pd.DataFrame(imqdictlist)
     #     continue
     
 
-print('Finished')

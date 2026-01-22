@@ -7,6 +7,8 @@ Packs all of Ron Arad's functions into one package
 With addtions and enhancements by Micha
 @author: micha
 """
+from typing import LiteralString
+
 import pandas as pd
 import numpy as np
 import os, sys
@@ -152,7 +154,7 @@ def debugger_is_active() -> bool:
     """Return if the debugger is currently active."""
     return hasattr(sys, 'gettrace') and sys.gettrace() is not None
         
-def generate_time_span_str(Ndays:int,Nshow:int,startdate:str=None,enddate:str=None) -> str:
+def generate_time_span_str(Ndays:int,Nshow:int,startdate:str=None,enddate:str=None) -> tuple:
     '''
     Generate a string giving the dates of the time span of the queries based on ther inputs.
     parameters:
@@ -313,8 +315,19 @@ def telmoments(crops:float) -> tuple:
     peridx = np.array([1,2,3,4,5,6,7,12,13,18,19,20,21,22,23,24])-1
     depth = crops[peridx].mean()-center
     perivar = crops[peridx].max()-crops[peridx].min()
-        
-    moments =(m,center,depth,perivar)
+    leftidx = np.array([1,2,3,4,5,6])-1
+    rightidx = np.array([19,20,21,22,23,24])-1
+    rglf = crops[leftidx].mean()-crops[rightidx].mean()
+    upidx = np.array([6,12,18,24])-1
+    dnidx =np.array([1,7,13,19])-1
+    updn = crops[upidx].mean()-crops[dnidx].mean()
+    xuridx = [17,18,23,24]
+    xulidx = [5,6,11,12]
+    xdlidx = [1,2,7.8]
+    xdridx = [13,14,19,20]
+    xuldr = crops[xulidx]- crops[xdridx]
+    xurdl = crops[xuridx]- crops[xdlidx]
+    moments =(m,center,depth,perivar,rglf,updn,xurdl,xuldr)
     return moments
     
 def telmap(cd:float)-> float:
@@ -343,7 +356,7 @@ def telmap(cd:float)-> float:
 
 def plot_mount_telescope_maps(mountnum:int,vals:list,
                               property_name:tuple, time_span_stamp:tuple,
-                              outdir:str):
+                              outdir:LiteralString):
     '''
     Plots 4 telescope maps of  a mount with annotations 
     of the values of vals and their stds
@@ -383,6 +396,36 @@ def plot_mount_telescope_maps(mountnum:int,vals:list,
     mapfig_filename = 'mount_%d_%s_%s_telmap.png'%(mountnum,time_span_stamp[0],property_name[0])
     mapfig.savefig(os.path.join(outdir,mapfig_filename))
     # plt.show() # for debug
+    return
+def plot_imq_metrics_vs_airmass(df:pd.DataFrame, fwhm_percentile:float, time_span_stamp:tuple,outdir:LiteralString):
+    '''
+    plots the metrics vs airmass of a filtered subset of the data
+    Shows only observations with mean fwhm below the fwhm_percentile parameter
+    Parameters:
+        df = image quality data frame contains metrics extracted from the telescope corps per observation time
+        fwhm_percentile = percentile upper limit threshold of the fwhm
+        time_span_stamp = a tuple of strings giving the time range of the data
+        outdir = output directory to save the plots
+
+    '''
+    metricnames = ['fwhm_mean', 'fwhm_center','fwhm_depth', 'fwhm_perivar', 'fwhm_updown', 'fwhm_rightleft']
+    metric_colors = ["red","olive", "blue", "brown","orange", "purple"]
+    # "8": "orange", "9": "olive", "10": "cyan"}
+    # Filter to get lower percentile fwhm
+    threshold = df['fwhm_mean'].quantile(fwhm_percentile)
+    df = df[ df['fwhm_mean'] <= threshold]
+    fig,axs = plt.subplots(3,2,figsize = (12,8),sharex='all')
+    axs = axs.flatten()
+    xvals = df['airmass'].values
+    for i,ax in enumerate(axs):
+        ax.scatter(xvals,df[metricnames[i]],s=3,c=metric_colors[i],alpha=0.1)
+        ax.set_xlabel('Airmass',fontsize =12)
+        ax.set_ylabel(metricnames[i].split('_')[1] + ' [arcsec]',fontsize = 12)
+        # ax.set_title(f'{metricnames[i]} vs.airmass')
+        ax.grid(True)
+    fig.suptitle(f'Image Quality Metrics {time_span_stamp[1]} - {time_span_stamp[2]} mean FWHM <= {fwhm_percentile*100}% percentile ',fontsize =14)
+    plt.savefig(os.path.join(outdir, f'ImageQualityMetrics_vs_airmass.png'))
+
     return
 
 def telescope_scatterplot_per_mount(mountnum:int,xvals:list,yvals:list, 
