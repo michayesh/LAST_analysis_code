@@ -317,17 +317,17 @@ def telmoments(crops:float) -> tuple:
     perivar = crops[peridx].max()-crops[peridx].min()
     leftidx = np.array([1,2,3,4,5,6])-1
     rightidx = np.array([19,20,21,22,23,24])-1
-    rglf = crops[leftidx].mean()-crops[rightidx].mean()
+    lfrg = crops[leftidx].mean()-crops[rightidx].mean()
     upidx = np.array([6,12,18,24])-1
     dnidx =np.array([1,7,13,19])-1
     updn = crops[upidx].mean()-crops[dnidx].mean()
-    xuridx = [17,18,23,24]
-    xulidx = [5,6,11,12]
-    xdlidx = [1,2,7.8]
-    xdridx = [13,14,19,20]
-    xuldr = crops[xulidx]- crops[xdridx]
-    xurdl = crops[xuridx]- crops[xdlidx]
-    moments =(m,center,depth,perivar,rglf,updn,xurdl,xuldr)
+    xuridx = np.array([18,23,24])-1
+    xulidx = np.array([5,6,12])-1
+    xdlidx = np.array([1,2,7])-1
+    xdridx = np.array([13,19,20])-1
+    xuldr = crops[xulidx].mean()- crops[xdridx].mean()
+    xurdl = crops[xuridx].mean() - crops[xdlidx].mean()
+    moments =(m,center,depth,perivar,lfrg,updn,xuldr,xurdl)
     return moments
     
 def telmap(cd:float)-> float:
@@ -353,6 +353,24 @@ def telmap(cd:float)-> float:
               [cd[1],cd[7],cd[13],cd[19]],
               [cd[0],cd[6],cd[12],cd[18]]])
     return telmap
+def cropxy_coord(cropnum:int)->tuple:
+    crop_size = 1596
+    #
+    cropmatrix = np.array(
+        [[6, 12, 18, 24],
+         [5, 11, 17, 23],
+         [4, 10, 16, 22],
+         [3, 9, 15, 21],
+         [2, 8, 14, 20],
+         [1, 7, 13, 19]])
+    xi = np.arange(0.5, 4, 1.0) * 1596
+    yi = np.arange(0.5, 6, 1) * 1596
+    flipped_cm = np.flip(cropmatrix, 0)
+    fl_flipped= flipped_cm.flatten()
+
+
+    (cy,cy)= np.meshgrid(xi,yi)
+
 
 def plot_mount_telescope_maps(mountnum:int,vals:list,
                               property_name:tuple, time_span_stamp:tuple,
@@ -397,7 +415,7 @@ def plot_mount_telescope_maps(mountnum:int,vals:list,
     mapfig.savefig(os.path.join(outdir,mapfig_filename))
     # plt.show() # for debug
     return
-def plot_imq_metrics_vs_airmass(df:pd.DataFrame, fwhm_percentile:float, time_span_stamp:tuple,outdir:LiteralString):
+def plot_imq_metrics_vs_airmass(df:pd.DataFrame,fwhm_percentile:float, time_span_stamp:tuple,outdir:LiteralString, condition:str='le'):
     '''
     plots the metrics vs airmass of a filtered subset of the data
     Shows only observations with mean fwhm below the fwhm_percentile parameter
@@ -406,27 +424,39 @@ def plot_imq_metrics_vs_airmass(df:pd.DataFrame, fwhm_percentile:float, time_spa
         fwhm_percentile = percentile upper limit threshold of the fwhm
         time_span_stamp = a tuple of strings giving the time range of the data
         outdir = output directory to save the plots
-
+        condition = string to define the filtrer condition ('<=' = less than or equal (default) ,'>=' = greater or equal)
     '''
-    metricnames = ['fwhm_mean', 'fwhm_center','fwhm_depth', 'fwhm_perivar', 'fwhm_updown', 'fwhm_rightleft']
-    metric_colors = ["red","olive", "blue", "brown","orange", "purple"]
-    # "8": "orange", "9": "olive", "10": "cyan"}
-    # Filter to get lower percentile fwhm
+    metricnames = ['fwhm_mean', 'fwhm_center','fwhm_depth','fwhm_perivar',
+                   'fwhm_updown', 'fwhm_leftright', 'fwhm_xuldr','fwhm_xurdl']
+    metric_colors = ['red', 'brown','blue', 'midnightblue','orange', 'purple','darkgreen','olive',]
+    # 'lavenderblush' 'magenta' 'yellow' 'cyan'
+    # Filter to get percentile fwhm
     threshold = df['fwhm_mean'].quantile(fwhm_percentile)
-    df = df[ df['fwhm_mean'] <= threshold]
-    fig,axs = plt.subplots(3,2,figsize = (12,8),sharex='all')
+    if condition == '<=':
+        df = df[ df['fwhm_mean'] <= threshold]
+    elif condition == '>=':
+        df = df[df['fwhm_mean'] >= threshold]
+
+    fig,axs = plt.subplots(4,2,figsize = (12,8),sharex='all')
     axs = axs.flatten()
     xvals = df['airmass'].values
-    for i,ax in enumerate(axs):
-        ax.scatter(xvals,df[metricnames[i]],s=3,c=metric_colors[i],alpha=0.1)
-        ax.set_xlabel('Airmass',fontsize =12)
-        ax.set_ylabel(metricnames[i].split('_')[1] + ' [arcsec]',fontsize = 12)
+    for i in range(len(metricnames)):
+        axs[i].scatter(xvals,df[metricnames[i]],s=3,c=metric_colors[i],alpha=0.1)
+        axs[i].set_xlabel('Airmass',fontsize =12)
+        axs[i].set_ylabel(metricnames[i].split('_')[1] + ' [arcsec]',fontsize = 12)
         # ax.set_title(f'{metricnames[i]} vs.airmass')
-        ax.grid(True)
-    fig.suptitle(f'Image Quality Metrics {time_span_stamp[1]} - {time_span_stamp[2]} mean FWHM <= {fwhm_percentile*100}% percentile ',fontsize =14)
+        axs[i].grid(True)
+    fig.suptitle(f'Image Quality Metrics {time_span_stamp[1]} - {time_span_stamp[2]} mean FWHM {condition} {fwhm_percentile*100}% percentile ',fontsize =14)
     plt.savefig(os.path.join(outdir, f'ImageQualityMetrics_vs_airmass.png'))
 
     return
+
+def plot_imq_metrics_vs_airmass(df:pd.DataFrame,fwhm_percentile:float, time_span_stamp:tuple,outdir:LiteralString, condition:str='le'):
+
+
+    return
+
+
 
 def telescope_scatterplot_per_mount(mountnum:int,xvals:list,yvals:list, 
                               xproperty_name:tuple,

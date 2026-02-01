@@ -59,7 +59,7 @@ db_out_path = os.path.join(dbpath,time_span_stamp[0])
 if  not os.path.isdir(db_out_path):
     os.mkdir(db_out_path)
 print('The database path is: %s \n'% db_out_path)
-#TODO generate a function for thsi section
+#TODO generate a function for this section
 if localrun:
     vimg_csv_file_name = pla.save_df_to_csv(df = None,
                                                dfname='vimg_df',
@@ -137,7 +137,7 @@ if not runcfg.general.imq_df_exists:
                           'fwhm_depth':metrics[2],
                           'fwhm_perivar':metrics[3],
                           'fwhm_updown':metrics[4],
-                          'fwhm_rightleft':metrics[5],
+                          'fwhm_leftright':metrics[5],
                           'fwhm_xuldr':metrics[6],
                           'fwhm_xurdl':metrics[7]
                           }
@@ -160,7 +160,9 @@ if plots.imq_metrics_vs_airmass:
     pla.plot_imq_metrics_vs_airmass(imq_df,
                                     fwhm_percentile = fwhm_percentile,
                                     time_span_stamp =time_span_stamp,
-                                    outdir = outdir)
+                                    outdir = outdir,
+                                    condition = runcfg.general.filter_condition)
+
 print('Finished')
 
 
