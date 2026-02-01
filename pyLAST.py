@@ -415,7 +415,15 @@ def plot_mount_telescope_maps(mountnum:int,vals:list,
     mapfig.savefig(os.path.join(outdir,mapfig_filename))
     # plt.show() # for debug
     return
-def plot_imq_metrics_vs_airmass(df:pd.DataFrame,fwhm_percentile:float, time_span_stamp:tuple,outdir:LiteralString, condition:str='le'):
+# Common variables for the next two plotting functions
+metricnames = ['fwhm_mean', 'fwhm_center','fwhm_depth','fwhm_perivar',
+                   'fwhm_updown', 'fwhm_leftright', 'fwhm_xuldr','fwhm_xurdl']
+metric_colors = ['red', 'brown','blue', 'midnightblue','orange', 'purple','darkgreen','olive',]
+    # 'lavenderblush' 'magenta' 'yellow' 'cyan'
+
+
+def plot_imq_metrics_vs_airmass(df:pd.DataFrame,fwhm_percentile:float,
+                                time_span_stamp:tuple,outdir:LiteralString, condition:str='<='):
     '''
     plots the metrics vs airmass of a filtered subset of the data
     Shows only observations with mean fwhm below the fwhm_percentile parameter
@@ -424,12 +432,8 @@ def plot_imq_metrics_vs_airmass(df:pd.DataFrame,fwhm_percentile:float, time_span
         fwhm_percentile = percentile upper limit threshold of the fwhm
         time_span_stamp = a tuple of strings giving the time range of the data
         outdir = output directory to save the plots
-        condition = string to define the filtrer condition ('<=' = less than or equal (default) ,'>=' = greater or equal)
+        condition = string to define the filtrer condition ('<=' = less or equal (default) ,'>=' = greater or equal)
     '''
-    metricnames = ['fwhm_mean', 'fwhm_center','fwhm_depth','fwhm_perivar',
-                   'fwhm_updown', 'fwhm_leftright', 'fwhm_xuldr','fwhm_xurdl']
-    metric_colors = ['red', 'brown','blue', 'midnightblue','orange', 'purple','darkgreen','olive',]
-    # 'lavenderblush' 'magenta' 'yellow' 'cyan'
     # Filter to get percentile fwhm
     threshold = df['fwhm_mean'].quantile(fwhm_percentile)
     if condition == '<=':
@@ -446,13 +450,75 @@ def plot_imq_metrics_vs_airmass(df:pd.DataFrame,fwhm_percentile:float, time_span
         axs[i].set_ylabel(metricnames[i].split('_')[1] + ' [arcsec]',fontsize = 12)
         # ax.set_title(f'{metricnames[i]} vs.airmass')
         axs[i].grid(True)
-    fig.suptitle(f'Image Quality Metrics {time_span_stamp[1]} - {time_span_stamp[2]} mean FWHM {condition} {fwhm_percentile*100}% percentile ',fontsize =14)
+    fig.suptitle(
+        f'Image Quality Metrics {time_span_stamp[1]} - {time_span_stamp[2]} mean FWHM {condition} {fwhm_percentile*100}% percentile ',
+        fontsize =14)
     plt.savefig(os.path.join(outdir, f'ImageQualityMetrics_vs_airmass.png'))
 
     return
+def generate_list_from_df_groups(df:pd.DataFrame,variable:str)->list:
+    """
+    Generates a list of dataframes from groups of a data frame grouped by a variable
+    i.e. df.groupby(variable)
+    Parameters:
+        df = dataframe that has 'variable' column
+        variable = variable name (str)
+    Returns:
+        dflist = list of dataframes grouped by variable
+    """
+    dflist = [group for name, group in df.groupby(variable)]
+    return dflist
 
-def plot_imq_metrics_vs_airmass(df:pd.DataFrame,fwhm_percentile:float, time_span_stamp:tuple,outdir:LiteralString, condition:str='le'):
+def plot_imq_metrics_vs_airmass_per_mount(df:pd.DataFrame,fwhm_percentile:float, time_span_stamp:tuple,outdir:LiteralString, condition:str='<='):
+    '''
+        plots the metrics vs airmass of a filtered subset of the data per mount (four telescopes)
+        Shows only observations with mean fwhm below/above the fwhm_percentile parameter
+        Parameters:
+            df = image quality data frame contains metrics extracted from the telescope corps per observation time
+            fwhm_percentile = percentile upper limit threshold of the fwhm
+            time_span_stamp = a tuple of strings giving the time range of the data
+            outdir = output directory to save the plots
+            condition = string to define the filter condition ('<=' = less than or equal (default) ,'>=' = greater or equal)
+    '''
+    mountdfs = generate_list_from_df_groups(df,variable='mountnum')
+    #loop over the mounts and generate 4x2 subplots for the 4 telescopes
+    for mount in mountdfs:
+        mountnum = int(mount['mountnum'].mean())
+        fig, axs = plt.subplots(4, 2, figsize=(12, 8), sharex='all')
+        axs = axs.flatten()
+        teldfs = generate_list_from_df_groups(mount,variable='telnum')
+        for tel in teldfs:
+            telnum = int(tel['telnum'].mean())
+            xvals = tel['airmass'].values
+            for i in range(len(metricnames)):
+                tel['bins'] = pd.cut(tel['airmass'], bins=20)
+                metricstats = tel.groupby('bins',observed = False)[metricnames[i]].agg(['mean', 'std']).reset_index()
+                metricstats['bin_mid'] = metricstats['bins'].apply(lambda x: x.mid)
+                x= metricstats['bin_mid']
+                y = metricstats['mean']
+                yerr = metricstats['std']
+                axs[i].errorbar(x,y,yerr,
+                                fmt='o-',
+                                ms = 2,
+                                elinewidth=1,
+                                capsize=0,
+                                color = tel_colors[telnum-1],
+                                label= f'tel{telnum}')
+                # axs[i].scatter(xvals, tel[metricnames[i]], s=3,
+                #                c=tel_colors[telnum-1], alpha=0.5,
+                #                label= f'tel{telnum}')
+                axs[i].set_xlabel('Airmass', fontsize=10)
+                axs[i].set_ylabel(metricnames[i].split('_')[1] + ' [arcsec]', fontsize=10)
+                # ax.set_title(f'{metricnames[i]} vs.airmass')
+                axs[i].grid(True)
+        handles, labels = axs[i].get_legend_handles_labels()
+        fig.legend(handles, labels, loc='upper center', bbox_to_anchor=(0.5, 0.1), ncols=4)
+        fig.subplots_adjust(bottom=0.2)
 
+        fig.suptitle(
+            f' Mount {mountnum} \n mean FWHM {condition} {fwhm_percentile * 100}% percentile ' +
+            f'Image Quality Metrics {time_span_stamp[1]} - {time_span_stamp[2]}\n', fontsize=14)
+        plt.savefig(os.path.join(outdir, f'ImageQualityMetrics_vs_airmass_M{mountnum}.png'))
 
     return
 

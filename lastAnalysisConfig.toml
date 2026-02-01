@@ -9,6 +9,12 @@ Nshow = 1
 # Comment startdate and enddate if not used
 startdate = '1/12/25'
 enddate =  '28/12/25'
+# image quality: choose only observations with fwhm below this percentile for analysis
+fwhm_percentile = 1.0
+# filter condition - default is '<='
+#filter_condition = '>='
+filter_condition = '<='
+imq_df_exists = true # to eliminate recreation of this database
 fraction_to_read = 0.2
 start_reading_at_frac = 0.0 #larger fraction is earlier
 nmounts = 10
@@ -28,6 +34,8 @@ vimg_axis_ratio_tel_maps = false             # LAST_Image quality
 vimg_FWHM_tel_stats = false              # LAST_Image quality
 vimg_FWHM_vs_cropid =false               # LAST_Image quality
 vimg_FWHM_vs_airmass =false               # LAST_Image quality
+imq_metrics_vs_airmass =false            # LAST_image quality
+imq_metrics_vs_airmass_per_mount = true # LAST_image quality
 FWHM_no_filter = false                  #(5) FWHM analysis
 FWHM_RA_Dec_focus = false               #(4)  FWHM analysis
 fraction_bad_focus = false              #(6)

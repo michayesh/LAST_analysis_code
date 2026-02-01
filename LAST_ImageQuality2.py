@@ -162,7 +162,12 @@ if plots.imq_metrics_vs_airmass:
                                     time_span_stamp =time_span_stamp,
                                     outdir = outdir,
                                     condition = runcfg.general.filter_condition)
-
+if plots.imq_metrics_vs_airmass_per_mount:
+    pla.plot_imq_metrics_vs_airmass_per_mount(imq_df,
+                                    fwhm_percentile = fwhm_percentile,
+                                    time_span_stamp =time_span_stamp,
+                                    outdir = outdir,
+                                    condition = runcfg.general.filter_condition)
 print('Finished')
 
 
