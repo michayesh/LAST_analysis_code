@@ -469,16 +469,19 @@ def generate_list_from_df_groups(df:pd.DataFrame,variable:str)->list:
     dflist = [group for name, group in df.groupby(variable)]
     return dflist
 
-def plot_imq_metrics_vs_airmass_per_mount(df:pd.DataFrame,fwhm_percentile:float, time_span_stamp:tuple,outdir:LiteralString, condition:str='<='):
+def plot_imq_metrics_vs_airmass_per_mount(df:pd.DataFrame,fwhm_percentile:float, time_span_stamp:tuple,
+                                          outdir:LiteralString, condition:str='<=', nbins = 20):
     '''
         plots the metrics vs airmass of a filtered subset of the data per mount (four telescopes)
         Shows only observations with mean fwhm below/above the fwhm_percentile parameter
+        The airmass data is binned to nbins (=20)
         Parameters:
             df = image quality data frame contains metrics extracted from the telescope corps per observation time
             fwhm_percentile = percentile upper limit threshold of the fwhm
             time_span_stamp = a tuple of strings giving the time range of the data
             outdir = output directory to save the plots
             condition = string to define the filter condition ('<=' = less than or equal (default) ,'>=' = greater or equal)
+            nbins = number of airmass data bins.
     '''
     mountdfs = generate_list_from_df_groups(df,variable='mountnum')
     #loop over the mounts and generate 4x2 subplots for the 4 telescopes
@@ -491,7 +494,7 @@ def plot_imq_metrics_vs_airmass_per_mount(df:pd.DataFrame,fwhm_percentile:float,
             telnum = int(tel['telnum'].mean())
             xvals = tel['airmass'].values
             for i in range(len(metricnames)):
-                tel['bins'] = pd.cut(tel['airmass'], bins=20)
+                tel['bins'] = pd.cut(tel['airmass'], bins=nbins)
                 metricstats = tel.groupby('bins',observed = False)[metricnames[i]].agg(['mean', 'std']).reset_index()
                 metricstats['bin_mid'] = metricstats['bins'].apply(lambda x: x.mid)
                 x= metricstats['bin_mid']

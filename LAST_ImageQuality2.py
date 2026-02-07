@@ -167,7 +167,8 @@ if plots.imq_metrics_vs_airmass_per_mount:
                                     fwhm_percentile = fwhm_percentile,
                                     time_span_stamp =time_span_stamp,
                                     outdir = outdir,
-                                    condition = runcfg.general.filter_condition)
+                                    condition = runcfg.general.filter_condition,
+                                              nbins=20)
 print('Finished')
 
 
