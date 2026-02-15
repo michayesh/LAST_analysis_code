@@ -6,8 +6,6 @@ Get data from the  last.visit.images and plot image quality metrics for
  telescopes
 @author: micha
 """
-# import matplotlib
-# matplotlib.use('QtAgg')
 import tomllib as tom
 import sys
 import pyLAST as pla
@@ -19,13 +17,6 @@ import os
 from tqdm import tqdm
 import matplotlib
 matplotlib.use('Qt5Agg') # or 'TkAgg'
-from matplotlib import pyplot as plt
-
-from pyLAST import debugger_is_active
-
-# import clickhouse_connect
-# from clickhouse_driver import Client
-# from pydantic import BaseModel
 
 configfile = sys.argv[1]
 
@@ -86,17 +77,9 @@ else:
                                        time_span_stamp = time_span_stamp[0])
     print(f'saved data in: \n {vimg_df_csv_file_name}\n')
 
-# grouped_dfs = {group_key: group_df for group_key, group_df in df.groupby('Category')}
-
-# Accessing a specific sub-DataFrame
-# print(grouped_dfs['B'])
-# if localrun:
-#     imq_csv_file_name = pla.save_df_to_csv(df = None,
-#                                                dfname='imq_df',
-#                                                outdir= db_out_path,
-#                                                time_span_stamp = time_span_stamp[0])
-#     imq_df = pd.read_csv(os.path.join(db_out_path,imq_csv_file_name))
-# else:
+# Process the vimg_df data frame: group by dateobs, then separate by mount and telescope (mount, camnum)
+# populate a new data frame with iamge metrics values per telescope per observation: imq_df
+# Save it as a csv file for fast load in case this has already done.
 
 if not runcfg.general.imq_df_exists:
     obslist = [group for name, group in vimg_df.groupby('dateobs')]
@@ -156,12 +139,17 @@ else:
                                           outdir= db_out_path,
                                           time_span_stamp = time_span_stamp[0])
     imq_df = pd.read_csv(os.path.join(db_out_path,imq_df_csv_file_name))
+
+
+# Generate plots of the image metrics vs. airmass
+# Plot general (over all telescopes) image metrics vs. airmass
 if plots.imq_metrics_vs_airmass:
     pla.plot_imq_metrics_vs_airmass(imq_df,
                                     fwhm_percentile = fwhm_percentile,
                                     time_span_stamp =time_span_stamp,
                                     outdir = outdir,
                                     condition = runcfg.general.filter_condition)
+# Plot image metrics vs. airmass per mount for the 4 telescopes
 if plots.imq_metrics_vs_airmass_per_mount:
     pla.plot_imq_metrics_vs_airmass_per_mount(imq_df,
                                     fwhm_percentile = fwhm_percentile,

@@ -164,6 +164,8 @@ for mount in mountlist:
                                          property_name = ('mean FWHM','[arcsec]'),
                                          time_span_stamp = time_span_stamp,
                                          outdir= outdir)
+           plt.close('all')
+
         # calculate mean axis ratio for each telescope
         cropaxes_df = tel.groupby('cropid',observed = 
                                   False)[['med_a','med_b']].agg('mean')
@@ -188,8 +190,8 @@ if plots.vimg_FWHM_tel_stats:
                            tel_labels= tel_labels,
                            property_name = ('vimgFWHM','[arcsec]'), 
                            time_span_stamp = time_span_stamp,
-                           color = 'orange',
-                           outdir= outdir)
+                           outdir= outdir,
+                           colorindex= None)
 
     
     #     yerrs = cropfwhm_df['std'].values
@@ -269,5 +271,5 @@ if plots.vimg_FWHM_tel_stats:
     #     print(f'Number of elescopes in mount {mountnum} is {numoftels}')
     #     continue
     
-
+plt.close('all')
 print('Finished')

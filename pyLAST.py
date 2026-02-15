@@ -8,7 +8,7 @@ With addtions and enhancements by Micha
 @author: micha
 """
 from typing import LiteralString
-
+import random
 import pandas as pd
 import numpy as np
 import os, sys
@@ -41,6 +41,7 @@ import clickhouse_connect
 t0 = pd.Timestamp("1970-01-01T00:00:00")
 # The following colors are globally used for 4 traces (4 scopes) and for 10 mounts
 tel_colors = ['red', 'green', 'blue', 'purple']
+tabcolors = 'tab:red','tab:blue','tab:green','tab:orange','tab:purple','tab:brown','tab:pink','tab:gray','tab:olive','tab:cyan'
 mount_colors = {"1": "red", "2": "green", "3": "blue", "4": "brown", "5": "pink", "6": "gray",    \
           "7": "purple", "8": "orange", "9": "olive", "10": "cyan"}  # per mount  
 cropids =[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24]
@@ -154,7 +155,7 @@ def debugger_is_active() -> bool:
     """Return if the debugger is currently active."""
     return hasattr(sys, 'gettrace') and sys.gettrace() is not None
         
-def generate_time_span_str(Ndays:int,Nshow:int,startdate:str=None,enddate:str=None) -> tuple:
+def generate_time_span_str(Ndays:int=1,Nshow:int=1,startdate:str=None,enddate:str=None) -> tuple:
     '''
     Generate a string giving the dates of the time span of the queries based on ther inputs.
     parameters:
@@ -262,6 +263,52 @@ def read_DB1( client, db_name:str, rediskey_prefix:str, extra:str=None,
         print('Here is the first line:\n',df.tail(1))
         print('\n')
     return df
+def visit_imagefn(imagedict:dict)->str:
+    """
+    Generate image file name for a specific image in euclid LAST coadd image database
+    Parameters:
+        imagedict = a dictionary with the following fields
+        M = mountnum :int -> str
+        C = camnum : int -> str
+        Cr = cropid: int -> str
+        F = fieldid:int ->str
+        S = subdir: str
+        YY = diryear: int ->str
+        MM = dirmon: int ->str
+        DD = dirday: int ->str
+        FT = filetime fixed .3f
+    Returns:
+        a string with the full path to a fits file in euclid
+        /mnt/euclid/last/data/LAST.01.M.C/YY/MM/DD/proc/S/LAST.01.M.C_YYMMDD.FT_clear_F_000_001_Cr_sci_coadd_Image_1.fits
+    """
+    pathprefix = r'/mnt/euclid/last/data/LAST.01.'
+    fnparts=[]
+    mount = f'{imagedict['mountnum']:02d}'
+    cam = f'{imagedict['camnum']:02d}'
+
+    subdir = imagedict['subdir']
+    year = f'{imagedict['diryear']:4d}'
+    month = f'{imagedict['dirmon']:02d}'
+    day = f'{imagedict['dirday']:02d}'
+    basepath = os.path.join(pathprefix + mount + '.' + cam,
+                            year, month, day,
+                            'proc',
+                            subdir)
+    fnparts.append('LAST.01.')
+    fnparts.append(mount+'.')
+    fnparts.append(cam+'_')
+    fnparts.append(year)
+    fnparts.append(month)
+    fnparts.append(day+'.')
+    fnparts.append(f'{imagedict['filetime']:.3f}')
+    fnparts.append('_clear_')
+    fnparts.append(f'{str(imagedict['fieldid']):s}')
+    fnparts.append('_000_001_')
+    fnparts.append(f'{imagedict['cropid']:03d}')
+    fnparts.append('_sci_coadd_Image_1.fits')
+    imfn = ''.join(fnparts)
+    return os.path.join(basepath, imfn)
+
 
 def read_visitDB( client, startdate:str=None, enddate:str=None, N_days:int=1, N_read:int=1)-> pd.DataFrame:
     '''A function for reading a given range of days from visit.images database 
@@ -273,7 +320,11 @@ def read_visitDB( client, startdate:str=None, enddate:str=None, N_days:int=1, N_
         N_read limits the search to N_read days after the initial day, set to -1 for all (default = 1)
         '''
     (start_str,end_str) = generate_date_range_str(startdate, enddate, N_days, N_read)
-    query_string = f'''SELECT dateobs,mountnum,camnum,ra,dec,cropid,fwhm,med_a,med_b,med_th,airmass
+    # query_string = f'''SELECT dateobs,mountnum,camnum,cropid,ra,dec,cropid,fwhm,med_a,med_b,med_th,airmass
+    #                    FROM last.visit_images
+    #                    WHERE dateobs > '{start_str}'
+    #                    AND dateobs < '{end_str}' '''
+    query_string = f'''SELECT *
                        FROM last.visit_images 
                        WHERE dateobs > '{start_str}'
                        AND dateobs < '{end_str}' '''
@@ -569,8 +620,7 @@ def telescope_scatterplot_per_mount(mountnum:int,xvals:list,yvals:list,
 
 def plot_tel_stats(vals:float,val_stds:float,tel_labels:list,
                    property_name:tuple,time_span_stamp:tuple,
-                   color:str,
-                   outdir:str ) -> plt.Figure:
+                   outdir:str, colorindex:int=3 ) -> plt.Figure:
     """
     Plots bar chart of telescope statistics + error bars 
     Parameters
@@ -582,14 +632,17 @@ def plot_tel_stats(vals:float,val_stds:float,tel_labels:list,
     time_span_stamp = a tuple of strings giving the time range of the data
         time_span_stamp[0] = time span string for file names 
         time_span_stamp[1,2] = start date:str, end date:str)
-    color : str = bar colors
+    colorindex : int = index of bar color 0--9 from tabcoloers list default=3 (orange) if None coose random color
     outdir : str = output directory to save the plots
     -------
     
     """
-    
+    #TODO add color index
+    if colorindex == None:
+        # if not default = orange choose random color
+        colorindex = random.choice([0,1,2,4,5,6,7,8,9])
     fig,ax = plt.subplots(figsize=(20,8))
-    ax.bar(tel_labels,vals, color = color, capsize =4)
+    ax.bar(tel_labels,vals, color = tabcolors[colorindex], capsize =4)
     ax.errorbar(tel_labels,vals,
                 yerr = val_stds,
                 fmt='none', 
