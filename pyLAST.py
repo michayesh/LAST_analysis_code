@@ -155,7 +155,7 @@ def debugger_is_active() -> bool:
     """Return if the debugger is currently active."""
     return hasattr(sys, 'gettrace') and sys.gettrace() is not None
         
-def generate_time_span_str(Ndays:int=1,Nshow:int=1,startdate:str=None,enddate:str=None) -> tuple:
+def generate_time_span_str(Ndays=None,Nshow=None,startdate:str=None,enddate:str=None) -> tuple:
     '''
     Generate a string giving the dates of the time span of the queries based on ther inputs.
     parameters:
@@ -320,14 +320,18 @@ def read_visitDB( client, startdate:str=None, enddate:str=None, N_days:int=1, N_
         N_read limits the search to N_read days after the initial day, set to -1 for all (default = 1)
         '''
     (start_str,end_str) = generate_date_range_str(startdate, enddate, N_days, N_read)
-    # query_string = f'''SELECT dateobs,mountnum,camnum,cropid,ra,dec,cropid,fwhm,med_a,med_b,med_th,airmass
+    # list of columns to grab (see file: /home/micha/Dropbox/WAO/LAST_analysis/LAST_analysis_code/Visit_DB_column_names.txt)
+    col_list = ['dateobs','mountnum','camnum','cropid', 'fieldid', 'subdir', 'ra','dec','fwhm','med_a','med_b','med_th','airmass',
+                'id_visit', 'temp_mnt', 'focus', 'diryear' ,'dirmon', 'dirday', 'filetime']
+    query_string = f'''SELECT {','.join(col_list)}
+                            FROM last.visit_images
+                       WHERE dateobs > '{start_str}'
+                       AND dateobs < '{end_str}' '''
+    # option to read all 167 cols
+    # query_string = f'''SELECT *
     #                    FROM last.visit_images
     #                    WHERE dateobs > '{start_str}'
     #                    AND dateobs < '{end_str}' '''
-    query_string = f'''SELECT *
-                       FROM last.visit_images 
-                       WHERE dateobs > '{start_str}'
-                       AND dateobs < '{end_str}' '''
     print(query_string)
     df = client.query_df(query_string)
     if df.empty:
@@ -662,6 +666,7 @@ def plot_property_vs_cropid_per_mount(vals:float,val_stds:float,
                                       property_name:tuple,time_span_stamp:tuple,
                                       outdir:str ):
     """
+    Plots a line connected errorbar plot of a property vs. crop id
     Parameters
     ----------
     vals : float a 4 element list of vectors of 24 float elements
