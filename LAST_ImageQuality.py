@@ -4,6 +4,10 @@
 Created on Sun Dec  7 23:14:46 2025
 Get data from the  last.visit.images and plot image quality metrics for
  telescopes
+Generates the full set of plopts and telescope maps based on the lastAnalysisConfig.toml config file
+If the data already exists in the database folder you can run it local
+If not than run it in local = false - start vpn connection and run it.
+It will read data from euclid visit image database and do the plotting.
 @author: micha
 """
 # import matplotlib
@@ -145,7 +149,7 @@ for mount in mountlist:
         print(e)
         print(f'Problem with mapping mount {mountnum} - {e}')
         continue
-    
+# Plot bar graph statistics for all telescopes
 if plots.vimg_FWHM_tel_stats:
     pla.plot_tel_stats(vals=telmean,
                        val_stds=telstd,
@@ -155,7 +159,13 @@ if plots.vimg_FWHM_tel_stats:
                        outdir=outdir,
                        colorindex=None)
 
-    
-
+telstats = dict({'tel_labels':tel_labels,'telmean':telmean,'telstd':telstd})
+telstats_df = pd.DataFrame(telstats)
+telstats_df.attrs['time_span_stamp'] = time_span_stamp[0]
+telstats_df.attrs['start_date'] = time_span_stamp[1]
+telstats_df.attrs['end_date'] = time_span_stamp[2]
+telstats_file_name = os.path.join(outdir,time_span_stamp[0]+'_telstats.csv')
+telstats_df.to_csv(telstats_file_name)
+print(f'Saved telstats file {time_span_stamp[0]+'_telstats.csv'} at {outdir}')
 plt.close('all')
 print('Finished')

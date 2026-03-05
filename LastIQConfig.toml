@@ -1,0 +1,36 @@
+[general]
+localrun = false
+database = 'euclid'
+nmounts = 10
+output_path = '/home/micha/Dropbox/WAO/LAST_analysis/output_dir'
+database_path = '/home/micha/Dropbox/WAO/LAST_analysis/databases'
+startdate = '1/02/26'
+enddate =  '28/02/26'
+#startdate = '2/12/25'
+#enddate =  '3/12/25'
+imq_df_exists = false # to eliminate recreation of this database
+
+[databases.euclid]
+name = 'euclid'
+host = '10.150.28.18'
+port = 9000
+user ='default'
+pw = 'PassRoot'
+operdb = 'observatory_operation'
+
+[databases.last0]
+name = 'last0'
+host = '10.23.1.25'
+port = 8123
+user = 'last_user'
+pw = 'physics'
+operdb = 'observatory_operation'
+
+[databases.science]
+name = 'science'
+host = '10.150.28.18'
+port = 8123
+user = 'last_user'
+pw = 'physics'
+operdb = 'last.visit_images'
+

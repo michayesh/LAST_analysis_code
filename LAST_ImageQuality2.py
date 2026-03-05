@@ -3,7 +3,7 @@
 """
 Created on Thu Jan 15 2026
 Get data from the  last.visit.images and plot image quality metrics for
- telescopes
+ telescopes as function of airmass
 @author: micha
 """
 import tomllib as tom

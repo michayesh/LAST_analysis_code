@@ -1,16 +1,17 @@
 [general]
 localrun = true
 database = 'euclid'
+nmounts = 10
 input_path = '/home/micha/Dropbox/WAO/LAST_analysis/input_dir'
 output_path = '/home/micha/Dropbox/WAO/LAST_analysis/output_dir'
 database_path = '/home/micha/Dropbox/WAO/LAST_analysis/databases'
-Ndays =1
-Nshow = 1
+#Ndays =1
+#Nshow = 1
 # Comment startdate and enddate if not used
-startdate = '1/01/26'
-enddate =  '31/01/26'
-#startdate = '1/12/25'
-#enddate =  '31/12/25'
+startdate = '1/12/25'
+enddate =  '31/12/25'
+#startdate = '2/12/25'
+#enddate =  '3/12/25'
 # image quality: choose only observations with fwhm below this percentile for analysis
 fwhm_percentile = 1.0
 # filter condition - default is '<='
@@ -19,24 +20,23 @@ filter_condition = '<='
 imq_df_exists = true # to eliminate recreation of this database
 fraction_to_read = 0.2
 start_reading_at_frac = 0.0 #larger fraction is earlier
-nmounts = 10
-# todo - capability to work on mount groups
+
 [run]
-tracking_analysis = true
-FWHM_analysis = true
-focus_analysis = true
-Temp_analysis = true
+tracking_analysis = false
+FWHM_analysis = false
+focus_analysis = false
+Temp_analysis = false
 # type of fit for focus vs temperature fits
 regular_fit = true 
 constraints = false
 
 [plots]
 vimg_FWHM_tel_maps = true                   # LAST_Image quality
-vimg_axis_ratio_tel_maps = false             # LAST_Image quality
+vimg_axis_ratio_tel_maps = true             # LAST_Image quality
 vimg_FWHM_tel_stats = true              # LAST_Image quality
-vimg_FWHM_vs_cropid =true               # LAST_Image quality
-vimg_FWHM_vs_airmass =false               # LAST_Image quality
-imq_metrics_vs_airmass =false            # LAST_image quality
+vimg_FWHM_vs_cropid = true               # LAST_Image quality
+vimg_FWHM_vs_airmass = true               # LAST_Image quality
+imq_metrics_vs_airmass =true            # LAST_image quality
 imq_metrics_vs_airmass_per_mount = true # LAST_image quality
 FWHM_no_filter = false                  #(5) FWHM analysis
 FWHM_RA_Dec_focus = false               #(4)  FWHM analysis
