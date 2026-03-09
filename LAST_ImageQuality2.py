@@ -26,8 +26,8 @@ with open(configfile, "rb") as f:
 runcfg =  pla.runconfig(cfg)
 
 inpath = runcfg.general.input_path
-outpath = runcfg.general.output_path
-dbpath = runcfg.general.database_path
+outpath = runcfg.general.OUTPUT_PATH
+dbpath = runcfg.general.DATABASE_PATH
 N_days = runcfg.general.Ndays
 N_show = runcfg.general.Nshow
 startdate =runcfg.general.startdate
@@ -40,7 +40,7 @@ fwhm_percentile = runcfg.general.fwhm_percentile
 timestamp = datetime.now().strftime('%y%m%d%H%M')
 # generate a directory for the current run:
     # for plots 
-outdir = os.path.join(runcfg.general.output_path, timestamp + '_output')
+outdir = os.path.join(runcfg.general.OUTPUT_PATH, timestamp + '_output')
 if  not os.path.isdir(outdir):
     os.mkdir(outdir)
 # for databases qeury results csv files
@@ -59,7 +59,7 @@ if localrun:
     vimg_df = pd.read_csv(os.path.join(db_out_path,vimg_csv_file_name))
                           
 else:
-    science = pla.LastDatabase(runcfg.databases.science)
+    science = pla.LastDatabase(runcfg.databases.SCIENCE)
     client = science.connect()
 
 # df=client.query_df('''SELECT dateobs,mountnum,camnum,ra,dec,cropid,fwhm,med_a,med_b,med_th,airmass

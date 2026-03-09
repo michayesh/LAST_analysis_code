@@ -37,17 +37,23 @@ from clickhouse_driver import Client
 import clickhouse_connect
 # from pydantic import BaseModel
 #------------------- end of imports
-# A constant used in several funcions
-t0 = pd.Timestamp("1970-01-01T00:00:00")
+# Constants used update if needed
+NMOUNTS = 10
+OUTPUT_PATH = '/home/micha/Dropbox/WAO/LAST_analysis/output_dir'
+DATABASE_PATH = '/home/micha/Dropbox/WAO/LAST_analysis/databases'
+SCIENCE_COL_LIST = ['dateobs', 'mountnum', 'camnum', 'cropid', 'fieldid', 'subdir', 'ra', 'dec', 'fwhm', 'med_a',
+                    'med_b', 'med_th', 'airmass',
+                    'id_visit', 'temp_mnt', 'focus', 'diryear', 'dirmon', 'dirday', 'filetime']
+T0 = pd.Timestamp("1970-01-01T00:00:00")
 # The following colors are globally used for 4 traces (4 scopes) and for 10 mounts
-tel_colors = ['red', 'green', 'blue', 'purple']
-tabcolors = 'tab:red','tab:blue','tab:green','tab:orange','tab:purple','tab:brown','tab:pink','tab:gray','tab:olive','tab:cyan'
-mount_colors = {"1": "red", "2": "green", "3": "blue", "4": "brown", "5": "pink", "6": "gray",    \
+TEL_COLORS = ['red', 'green', 'blue', 'purple']
+TABCOLORS = 'tab:red', 'tab:blue', 'tab:green', 'tab:orange', 'tab:purple', 'tab:brown', 'tab:pink', 'tab:gray', 'tab:olive', 'tab:cyan'
+MOUNT_COLORS = {"1": "red", "2": "green", "3": "blue", "4": "brown", "5": "pink", "6": "gray",
           "7": "purple", "8": "orange", "9": "olive", "10": "cyan"}  # per mount  
-cropids =[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24]
+CROPIDS =[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24]
 # constraints for fitting focus -temperature slopes 
-constraints =(-20., 23., 16., 0.1)   #first 2 are the rigid slope limits, the third is the center and the 4th is the weight
-fovdict ={'tl':[5,6,12],
+CONSTRAINTS =(-20., 23., 16., 0.1)   #first 2 are the rigid slope limits, the third is the center and the 4th is the weight
+FOVDICT ={'tl':[5, 6, 12],
       'tr':[18,24,23],
       'tc':[11,17],
       'dc':[8,14],
@@ -74,15 +80,23 @@ fovdict ={'tl':[5,6,12],
 #     user:str = None
 #     pw:str = None
 #     operdb:str = None
-class LastDatabase: 
-    def __init__(self,dbcfg):
-        self.name = dbcfg.name
-        self.host = dbcfg.host
-        self.port = dbcfg.port
-        self.user = dbcfg.user
-        self.pw = dbcfg.pw
-        self.operdb = dbcfg.operdb
-        
+# class LastDatabase:
+#     def __init__(self,dbcfg):
+#         self.name = dbcfg.name
+#         self.host = dbcfg.host
+#         self.port = dbcfg.port
+#         self.user = dbcfg.user
+#         self.pw = dbcfg.pw
+#         self.operdb = dbcfg.operdb
+
+class LastDatabase:
+    def __init__(self,name:str,host:str,port:int,user:str,pw:str,operdb:str):
+        self.name = name
+        self.host = host
+        self.port = port
+        self.user = user
+        self.pw = pw
+        self.operdb = operdb
     def connect(self):
         if self.name == 'science':
             client = clickhouse_connect.get_client(host=self.host, port=self.port,
@@ -94,7 +108,29 @@ class LastDatabase:
     # def __init__(self,name: str,host:str,port:int,user:str,pw:str):
     #     self.name = None
     #     self.host = None
-    
+SCIENCE = LastDatabase(
+        name='science',
+        host = '10.150.28.18',
+        port = 8123,
+        user = 'last_user',
+        pw = 'physics',
+        operdb = 'last.visit_images')
+last0 = LastDatabase(
+    name = 'last0',
+    host = '10.23.1.25',
+    port = 8123,
+    user = 'last_user',
+    pw = 'physics',
+    operdb = 'observatory_operation')
+euclid = LastDatabase(
+    name = 'euclid',
+    host = '10.150.28.18',
+    port = 9000,
+    user ='default',
+    pw = 'PassRoot',
+    operdb = 'observatory_operation')
+
+
 class runconfig:   
     '''
     gernrates a run cofiguration object with all the config file sections.
@@ -189,7 +225,7 @@ def generate_time_span_str(Ndays=None,Nshow=None,startdate:str=None,enddate:str=
     start_str = start_date.strftime('%Y%m%d')
     end_str   = end_date.strftime('%Y%m%d')
     time_span_str = start_str + '_' + end_str
-    return  ( time_span_str,start_date.strftime('%d/%m/%Y'),end_date.strftime('%d/%m/%Y'))
+    return  ( time_span_str,start_date.strftime('%d/%m/%y'),end_date.strftime('%d/%m/%y'))
 
 def save_df_to_csv(dfname:str,outdir:str, time_span_stamp:str,df:pd.DataFrame=None) -> str:
     '''
@@ -218,7 +254,7 @@ def save_df_to_csv(dfname:str,outdir:str, time_span_stamp:str,df:pd.DataFrame=No
     return csv_file_name
 
 def read_DB1( client, db_name:str, rediskey_prefix:str, extra:str=None, 
-             startdate:str=None, enddate:str=None, N_days:int =1, N_read:int=1):
+             startdate:str=None, enddate:str=None):
     '''A general function for reading a given range of days from databse (dictionary with database details)
     looking for rediskey prefix. Note, the extra parameter is  mandatory and
     is used to add another condition
@@ -243,8 +279,8 @@ def read_DB1( client, db_name:str, rediskey_prefix:str, extra:str=None,
     #     # euclid as client using clickhouse_driver
     #     client = Client(host='euclid', port=9000, \
     #              user='last_user', password='physics', database='observatory_operation') 
-    if N_read == -1: N_read=N_days
-    query_string = build_range_query1( db_name, rediskey_prefix, extra, startdate, enddate, N_days, N_read)
+    # if N_read == -1: N_read=N_days
+    query_string = build_range_query1( db_name, rediskey_prefix, extra, startdate, enddate)
     print(query_string)
 
     # if database.name == 'last0':    
@@ -319,11 +355,9 @@ def read_visitDB( client, startdate:str=None, enddate:str=None, N_days:int=1, N_
         N_days is the number of days before present to search for (default = 1)
         N_read limits the search to N_read days after the initial day, set to -1 for all (default = 1)
         '''
-    (start_str,end_str) = generate_date_range_str(startdate, enddate, N_days, N_read)
+    (start_str,end_str) = generate_date_range_str(startdate, enddate)
     # list of columns to grab (see file: /home/micha/Dropbox/WAO/LAST_analysis/LAST_analysis_code/Visit_DB_column_names.txt)
-    col_list = ['dateobs','mountnum','camnum','cropid', 'fieldid', 'subdir', 'ra','dec','fwhm','med_a','med_b','med_th','airmass',
-                'id_visit', 'temp_mnt', 'focus', 'diryear' ,'dirmon', 'dirday', 'filetime']
-    query_string = f'''SELECT {','.join(col_list)}
+    query_string = f'''SELECT {','.join(SCIENCE_COL_LIST)}
                             FROM last.visit_images
                        WHERE dateobs > '{start_str}'
                        AND dateobs < '{end_str}' '''
@@ -342,6 +376,39 @@ def read_visitDB( client, startdate:str=None, enddate:str=None, N_days:int=1, N_
         print('Here is the first line:\n',df.tail(1))
         print('\n')
     return df
+
+def get_vimg_df(localrun, dbpath, startdate, enddate):
+    time_span_stamp = \
+        generate_time_span_str(startdate=startdate,
+                                   enddate=enddate)
+    db_out_path = os.path.join(dbpath, time_span_stamp[0])
+    if localrun:
+        vimg_csv_file_name = save_df_to_csv(
+            df=None,
+            dfname='vimg_df',
+            outdir=db_out_path,
+            time_span_stamp=time_span_stamp[0]
+        )
+        vimg_df = pd.read_csv(os.path.join(db_out_path, vimg_csv_file_name))
+    else:
+        # generate a folder for the database in the database folder
+        if not os.path.isdir(db_out_path):
+            os.mkdir(db_out_path)
+        # Read from the database
+        # science = LastDatabase(runcfg.databases.science)
+        client = SCIENCE.connect()
+        vimg_df = read_visitDB(client, startdate=startdate, enddate=enddate)
+
+        vimg_df_csv_file_name = save_df_to_csv(
+            df=vimg_df,
+            dfname='vimg_df',
+            outdir=db_out_path,
+            time_span_stamp=time_span_stamp[0]
+        )
+        print(f'saved data in: \n {vimg_df_csv_file_name}\n')
+
+    return vimg_df
+
 def find_missing_crops(crop_list):
     """
     Finds the missing crops from a crop list.
@@ -560,7 +627,7 @@ def plot_imq_metrics_vs_airmass_per_mount(df:pd.DataFrame,fwhm_percentile:float,
                                 ms = 2,
                                 elinewidth=1,
                                 capsize=0,
-                                color = tel_colors[telnum-1],
+                                color = TEL_COLORS[telnum-1],
                                 label= f'tel{telnum}')
                 # axs[i].scatter(xvals, tel[metricnames[i]], s=3,
                 #                c=tel_colors[telnum-1], alpha=0.5,
@@ -607,7 +674,7 @@ def telescope_scatterplot_per_mount(mountnum:int,xvals:list,yvals:list,
                     yvals[i],
                     s=3,
                     marker ='o',
-                    color = tel_colors[i]                
+                    color = TEL_COLORS[i]
           )
         ax.set_title('Telscope %d %s %s'%
                      ((i+1),yproperty_name[0],yproperty_name[1]),fontsize = 14)
@@ -646,7 +713,7 @@ def plot_tel_stats(vals:float,val_stds:float,tel_labels:list,
         # if not default = orange choose random color
         colorindex = random.choice([0,1,2,4,5,6,7,8,9])
     fig,ax = plt.subplots(figsize=(20,8))
-    ax.bar(tel_labels,vals, color = tabcolors[colorindex], capsize =4)
+    ax.bar(tel_labels, vals, color = TABCOLORS[colorindex], capsize =4)
     ax.errorbar(tel_labels,vals,
                 yerr = val_stds,
                 fmt='none', 
@@ -684,22 +751,22 @@ def plot_property_vs_cropid_per_mount(vals:float,val_stds:float,
     
     fig,ax = plt.subplots(figsize=(12,8))
     i=0
-    for curvals,curstds,curcolor in zip(vals,val_stds,tel_colors):
+    for curvals,curstds,curcolor in zip(vals,val_stds,TEL_COLORS):
         i+=1
-        ax.errorbar(cropids,curvals,
+        ax.errorbar(CROPIDS, curvals,
                     yerr = curstds,
                     marker = 'o',
                     linestyle ='-',
                     markersize = 4,
-                    capsize =2, 
+                    capsize =2,
                     color=curcolor,
                     label = f'tel {i}')          
     ax.grid(axis='both')
     ax.legend(fontsize =12)
     ax.tick_params(axis='x',labelsize=12)
     ax.tick_params(axis='y',labelsize=12)
-    ax.set_xticks(cropids)
-    ax.set_xticklabels(cropids)
+    ax.set_xticks(CROPIDS)
+    ax.set_xticklabels(CROPIDS)
     ax.set_xlim([0,25])
     ax.set_ylabel('%s %s'%(property_name[0],property_name[1]),fontsize=14)
     ax.set_xlabel('cropid',fontsize =14)
@@ -1202,7 +1269,7 @@ def basic_processing_FWHM(df):
         final_df["HH-MM-DD-mm"] = pd.to_datetime(final_df['time']).dt.strftime('%H_%M_%d_%m')
         final_df['time'] = pd.to_datetime(final_df['time'], errors='coerce')   
         # subtracting t0 (1970) to make a time-diff and converting to days and adding (1970-jd) to convert to jd
-        final_df['TimeStarted'] = (final_df['time'] - t0).dt.total_seconds() / (24 * 3600) + 2440587.5
+        final_df['TimeStarted'] = (final_df['time'] - T0).dt.total_seconds() / (24 * 3600) + 2440587.5
 
     '''for FWHM data need to convert minor and major columns by multiplying by 2*sqrt(ln(4)) = 2.355'''
     if 'minor' in final_df.columns:
@@ -1273,7 +1340,7 @@ def basic_processing_tracking(df):
         final_df["HH-MM-DD-mm"] = pd.to_datetime(final_df['time']).dt.strftime('%H_%M_%d_%m')
         final_df['time'] = pd.to_datetime(final_df['time'], errors='coerce')   
         # subtracting t0 (1970) to make a time-diff and converting to days and adding (1970-jd) to convert to jd
-        final_df['TimeStarted'] = (final_df['time'] - t0).dt.total_seconds() / (24 * 3600) + 2440587.5
+        final_df['TimeStarted'] = (final_df['time'] - T0).dt.total_seconds() / (24 * 3600) + 2440587.5
 
     return final_df.sort_values(by='TimeStarted', ascending=True)
 
@@ -1696,21 +1763,21 @@ def plot_bestpos_vs_temp_by_mount(df: pd.DataFrame, output_directory: str,
                 if regular_fit:
                     '''For regular linear fit'''
                     y_pred, R2, m, b, text = linear_fit(x, y, 'col', True)
-                elif not constraints:
+                elif not CONSTRAINTS:
                     '''For fixed slope and calculate only intercept use:'''
                     slope_fixed = 18
                     y_pred, R2, m, b, text = linear_fit_intercept_only(
                         x, y, 'col', slope_fixed)
                 else:
                     y_pred, R2, m, b, text = fit_constrained_linear(x, y,'col',
-                                           [constraints[0], constraints[1]], 
-                                           constraints[2], constraints[3], 
-                                           bandwidth=0.2)
+                                                                    [CONSTRAINTS[0], CONSTRAINTS[1]],
+                                                                    CONSTRAINTS[2], CONSTRAINTS[3],
+                                                                    bandwidth=0.2)
                 # print(f"mount {mount_num} scope{scope_num}, 
                 # b: {num_round_2(b)}, R²: {num_round_2(R2)}")
                 # Plot the fit line
                 if y_axis != 'minor':
-                    ax.plot(x, y_pred, color=tel_colors[scope_num-1], linewidth=1)
+                    ax.plot(x, y_pred, color=TEL_COLORS[scope_num-1], linewidth=1)
 
                 # Store fit results
                 fit_results.append({
@@ -1737,7 +1804,7 @@ def plot_bestpos_vs_temp_by_mount(df: pd.DataFrame, output_directory: str,
                     # if missing
                 ax.scatter(x[start:end], y[start:end],
                            marker=markers[i % len(markers)], s=15,
-                           color=tel_colors[scope_num-1],
+                           color=TEL_COLORS[scope_num-1],
                            # label only for first slice
                            label=
                            f'{scope_num} {num_round_2(m)} {num_round_2(R2, 2)}'
@@ -1764,7 +1831,7 @@ def plot_bestpos_vs_temp_by_mount(df: pd.DataFrame, output_directory: str,
         if mount_num >= 8:
             ax.set_xlabel(x_axis)
         ax.legend(loc='upper left', fontsize=12)
-    if not regular_fit and not constraints:
+    if not regular_fit and not CONSTRAINTS:
         title = title + ' slope=' + str(slope_fixed)
 
     fig.suptitle(title, fontsize=18, y=1.02)
@@ -1937,7 +2004,7 @@ def plot_FWHM(FWHM_groups,output_directory,showplots=False):
             plt.scatter(
                 sub_df['adjusted_hour'],
                 sub_df['minor'],
-                color=tel_colors[j],
+                color=TEL_COLORS[j],
                 label=f'Scope: {scope}',
                 marker='.',
                 s=6,
@@ -2119,7 +2186,7 @@ def plot_tracking_results_3(tracking_results_groups, focus_groups,output_directo
         for j in range(1, 5):
             col = f'minor_{j}'
             if col in df.columns:
-                ax.scatter(df['adjusted_hour'], df[col], s=6, color=tel_colors[j - 1], alpha=0.7, label=col)
+                ax.scatter(df['adjusted_hour'], df[col], s=6, color=TEL_COLORS[j - 1], alpha=0.7, label=col)
         
         # Axis labels and title
         ax.set_xlabel('Start Hour')
@@ -2497,7 +2564,7 @@ def plot_jumps(jumps,output_directory):
     
     for scope, row in counts_sorted.iterrows():
         mount, sc = scope.split(".")
-        color = mount_colors.get(mount, "black")
+        color = MOUNT_COLORS.get(mount, "black")
         for b in labels:
             if b in row and not pd.isna(row[b]):
                 plt.scatter(scope, row[b], marker=markers[b], color=color, s=60)
@@ -2682,7 +2749,7 @@ def plot_alt_vs_hour(focus_groups:list,output_directory:str):
             markersize=10,
             linewidth=0.5,
             label=f"Mount {mount_idx}",
-            color=mount_colors.get(str(mount_idx), "black")
+            color=MOUNT_COLORS.get(str(mount_idx), "black")
         )
 
     ax.set_xlabel("Adjusted Hour [H]")

@@ -21,7 +21,7 @@ for index,telstat_df in enumerate(telstat_df_list):
     tel_labels = telstat_df['tel_labels'].astype(str)
     vals =telstat_df['telmean'].values
     val_stds = telstat_df['telstd'].values
-    ax.bar(tel_labels, vals, color=pla.tabcolors[index], capsize=4)
+    ax.bar(tel_labels, vals, color=pla.TABCOLORS[index], capsize=4)
     ax.errorbar(tel_labels, vals,
                 yerr=val_stds,
                 fmt='none',

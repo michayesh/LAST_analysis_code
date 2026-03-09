@@ -4,10 +4,18 @@
 Created on Sun Dec  7 23:14:46 2025
 Get data from the  last.visit.images and plot image quality metrics for
  telescopes
-Generates the full set of plopts and telescope maps based on the lastAnalysisConfig.toml config file
+Generates the full set of plopts and telescope maps in the out dir.
+based on the puLAST.OUT_DIR path + timestamp of now.
 If the data already exists in the database folder you can run it local
 If not than run it in local = false - start vpn connection and run it.
-It will read data from euclid visit image database and do the plotting.
+It will read data from euclid science visit image database and do the plotting.
+parameters:
+    startdate = dd/mm/yy string
+    enddate = dd/mm/yy string
+    local_run 0/False = read from data base - needs vpn
+              1/True =  read from csv file from the database folder
+
+
 @author: micha
 """
 # import matplotlib
@@ -20,57 +28,63 @@ from datetime import datetime
 import os
 from matplotlib import pyplot as plt
 # Read config file
-configfile = sys.argv[1]
-with open(configfile, "rb") as f:
-    cfg = tom.load(f)
+startdate = sys.argv[1]
+enddate = sys.argv[2]
+local_run = eval(sys.argv[3])
+# with open(configfile, "rb") as f:
+#     cfg = tom.load(f)
 # generate a runconfig object
-runcfg =  pla.runconfig(cfg)
-inpath = runcfg.general.input_path
-outpath = runcfg.general.output_path
-dbpath = runcfg.general.database_path
-startdate =runcfg.general.startdate
-enddate = runcfg.general.enddate
-nmounts = runcfg.general.nmounts
-run = runcfg.run
-plots = runcfg.plots    
-localrun = runcfg.general.localrun
+# runcfg =  pla.runconfig(cfg)
+# inpath = runcfg.general.input_path
+# outpath = runcfg.general.output_path
+# dbpath = runcfg.general.database_path
+# startdate =runcfg.general.startdate
+# enddate = runcfg.general.enddate
+# nmounts = runcfg.general.nmounts
+# run = runcfg.run
+# plots = runcfg.plots
+# localrun = runcfg.general.localrun
 timestamp = datetime.now().strftime('%y%m%d%H%M')
-# generate a directory for the current run for plots
-outdir = os.path.join(runcfg.general.output_path, timestamp + '_output')
+# # generate a directory for the current run for plots
+outdir = os.path.join(pla.OUTPUT_PATH, timestamp + '_output')
 if  not os.path.isdir(outdir):
     os.mkdir(outdir)
 # for databases qeury results csv files
 time_span_stamp = \
     pla.generate_time_span_str(startdate = startdate,
                                enddate = enddate)
-db_out_path = os.path.join(dbpath,time_span_stamp[0])
+db_out_path = os.path.join(pla.DATABASE_PATH,time_span_stamp[0])
 if  not os.path.isdir(db_out_path):
     os.mkdir(db_out_path)
 print('The database path is: %s \n'% db_out_path)
-#TODO generate a function for this section
-if localrun:
-    vimg_csv_file_name = pla.save_df_to_csv(df = None,
-                                               dfname='vimg_df',
-                                               outdir= db_out_path,
-                                               time_span_stamp = time_span_stamp[0])
-    vimg_df = pd.read_csv(os.path.join(db_out_path,vimg_csv_file_name))
-                          
-else:
-    science = pla.LastDatabase(runcfg.databases.science)
-    client = science.connect()
-    # the database columns that are read are listed in the function
-    vimg_df = pla.read_visitDB(client,startdate=startdate,
-                          enddate=enddate)
 
-    vimg_df_csv_file_name = pla.save_df_to_csv(df = vimg_df,
-                                       dfname='vimg_df',
-                                       outdir= db_out_path,
-                                       time_span_stamp = time_span_stamp[0])
-    print(f'saved data in: \n {vimg_df_csv_file_name}\n')
+# if localrun:
+#     vimg_csv_file_name = pla.save_df_to_csv(df = None,
+#                                                dfname='vimg_df',
+#                                                outdir= db_out_path,
+#                                                time_span_stamp = time_span_stamp[0])
+#     vimg_df = pd.read_csv(os.path.join(db_out_path,vimg_csv_file_name))
+#
+# else:
+#     science = pla.LastDatabase(runcfg.databases.science)
+#     client = science.connect()
+#     # the database columns that are read are listed in the function
+#     vimg_df = pla.read_visitDB(client,startdate=startdate,
+#                           enddate=enddate)
+#
+#     vimg_df_csv_file_name = pla.save_df_to_csv(df = vimg_df,
+#                                        dfname='vimg_df',
+#                                        outdir= db_out_path,
+#                                        time_span_stamp = time_span_stamp[0])
+#     print(f'saved data in: \n {vimg_df_csv_file_name}\n')
+vimg_df = pla.get_vimg_df(localrun= local_run,
+                          dbpath = pla.DATABASE_PATH,
+                          startdate = startdate,
+                          enddate = enddate)
 
 mountlist = [group for name, group in vimg_df.groupby('mountnum')]
 imq =pd.DataFrame(columns =['mount','tel','crop','meanfwhm','stdfwhm'])
-# loop on mounts and generate sub groups by telescopes and by fov regions (keys)
+# loop on mounts and generate subgroups by telescopes and by fov regions (keys)
 telmean=[]
 telstd=[]
 tel_labels=[]
@@ -118,46 +132,44 @@ for mount in mountlist:
 
         #plots per mount
         # plot FWHM errorbar plot vs cropid per telescope for a mount use telescope colors
-        if plots.vimg_FWHM_vs_cropid:
-            pla.plot_property_vs_cropid_per_mount(
-                    vals=cropfwhm,
-                    val_stds =cropsfwhm,
-                    mountnum = mountnum,
-                    property_name=('FWHM','[arcsec]'),
-                    time_span_stamp= time_span_stamp,
-                    outdir= outdir)
+        # if plots.vimg_FWHM_vs_cropid:
+        pla.plot_property_vs_cropid_per_mount(
+                vals=cropfwhm,
+                val_stds =cropsfwhm,
+                mountnum = mountnum,
+                property_name=('FWHM','[arcsec]'),
+                time_span_stamp= time_span_stamp,
+                outdir= outdir)
 
         # Plot fwhm maps for four telescopes on a mount
-        if plots.vimg_FWHM_tel_maps:
-           pla.plot_mount_telescope_maps(mountnum= mountnum,
-                                         vals=cropfwhm, 
-                                         property_name = ('mean FWHM','[arcsec]'),
-                                         time_span_stamp = time_span_stamp,
-                                         outdir= outdir)
-           plt.close('all')
-
-
+        # if plots.vimg_FWHM_tel_maps:
+        pla.plot_mount_telescope_maps(mountnum= mountnum,
+                                     vals=cropfwhm,
+                                     property_name = ('mean FWHM','[arcsec]'),
+                                     time_span_stamp = time_span_stamp,
+                                     outdir= outdir)
+        plt.close('all')
         # Plot axis ratio maps for four telescopes on a mount
-        if plots.vimg_axis_ratio_tel_maps:  
-           pla.plot_mount_telescope_maps(mountnum= mountnum,
-                                         vals=axratio, 
-                                         property_name = ('mean axis ratio',''),
-                                         time_span_stamp = time_span_stamp,
-                                         outdir= outdir)
+        # if plots.vimg_axis_ratio_tel_maps:
+        pla.plot_mount_telescope_maps(mountnum= mountnum,
+                                     vals=axratio,
+                                     property_name = ('mean axis ratio',''),
+                                     time_span_stamp = time_span_stamp,
+                                     outdir= outdir)
         
     except Exception as e:
         print(e)
         print(f'Problem with mapping mount {mountnum} - {e}')
         continue
 # Plot bar graph statistics for all telescopes
-if plots.vimg_FWHM_tel_stats:
-    pla.plot_tel_stats(vals=telmean,
-                       val_stds=telstd,
-                       tel_labels=tel_labels,
-                       property_name=('vimgFWHM', '[arcsec]'),
-                       time_span_stamp=time_span_stamp,
-                       outdir=outdir,
-                       colorindex=None)
+# if plots.vimg_FWHM_tel_stats:
+pla.plot_tel_stats(vals=telmean,
+                   val_stds=telstd,
+                   tel_labels=tel_labels,
+                   property_name=('vimgFWHM', '[arcsec]'),
+                   time_span_stamp=time_span_stamp,
+                   outdir=outdir,
+                   colorindex=None)
 
 telstats = dict({'tel_labels':tel_labels,'telmean':telmean,'telstd':telstd})
 telstats_df = pd.DataFrame(telstats)

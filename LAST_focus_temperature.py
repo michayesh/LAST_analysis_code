@@ -37,8 +37,8 @@ runcfg =  pla.runconfig(cfg)
 euclid = pla.LastDatabase(runcfg.databases.euclid)
 last0 = pla.LastDatabase(runcfg.databases.last0)
 inpath = runcfg.general.input_path
-outpath = runcfg.general.output_path
-dbpath = runcfg.general.database_path
+outpath = runcfg.general.OUTPUT_PATH
+dbpath = runcfg.general.DATABASE_PATH
 # general.setdefault('Ndays')
 N_days = runcfg.general.Ndays
 # general.setdefault('Nshow')
@@ -69,7 +69,7 @@ tic = time.time()
 timestamp = datetime.now().strftime('%y%m%d%H%M')
 # generate a directory for the current run:
     # for plots 
-outdir = os.path.join(runcfg.general.output_path, timestamp + '_output')
+outdir = os.path.join(runcfg.general.OUTPUT_PATH, timestamp + '_output')
 if  not os.path.isdir(outdir):
     os.mkdir(outdir)
 # for databases qeury results csv files
