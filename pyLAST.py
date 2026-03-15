@@ -43,6 +43,7 @@ OUTPUT_PATH = '/home/micha/Dropbox/WAO/LAST_analysis/output_dir'
 DATABASE_PATH = '/home/micha/Dropbox/WAO/LAST_analysis/databases'
 SCIENCE_COL_LIST = ['dateobs', 'mountnum', 'camnum', 'cropid', 'fieldid', 'subdir', 'ra', 'dec', 'fwhm', 'med_a',
                     'med_b', 'med_th', 'airmass',
+                    'ph_zp','limmag',
                     'id_visit', 'temp_mnt', 'focus', 'diryear', 'dirmon', 'dirday', 'filetime']
 T0 = pd.Timestamp("1970-01-01T00:00:00")
 # The following colors are globally used for 4 traces (4 scopes) and for 10 mounts
@@ -777,28 +778,36 @@ def plot_property_vs_cropid_per_mount(vals:float,val_stds:float,
 
 
 
-def generate_date_range_str(startdate:str,enddate:str,ndays:int,nread:int)->tuple:
-    if nread == -1: nread=ndays
-    if startdate:
-        start_date = datetime.strptime(startdate,'%d/%m/%y').replace(hour=12, minute=0, second=0, microsecond=0)
-    elif ndays:
-        start_date = datetime.now() - timedelta(days=ndays)
-        start_date = start_date.replace(hour=12, minute=0, second=0, microsecond=0)
-    else:
-        raise Exception('Error: either start date or N_days must be given')
-    
-    if enddate:
-        end_date = datetime.strptime(enddate,'%d/%m/%y').replace(hour=12, minute=0, second=0, microsecond=0)
-    elif nread:
-        end_date = start_date + timedelta(days=nread)
-    else:
-        raise Exception('Error: either start date or N_days must be given')
-        
+def generate_date_range_str(startdate:str,enddate:str)->tuple:
+    start_date = datetime.strptime(startdate,'%d/%m/%y').replace(hour=12, minute=0, second=0, microsecond=0)
+    end_date = datetime.strptime(enddate,'%d/%m/%y').replace(hour=12, minute=0, second=0, microsecond=0)
     start_str = start_date.strftime('%Y-%m-%d %H:%M:%S')
     end_str   = end_date.strftime('%Y-%m-%d %H:%M:%S')
     date_range_str = (start_str,end_str)
     return date_range_str
 
+
+def generate_date_range_str_old(startdate: str, enddate: str, ndays: int, nread: int) -> tuple:
+    if nread == -1: nread = ndays
+    if startdate:
+        start_date = datetime.strptime(startdate, '%d/%m/%y').replace(hour=12, minute=0, second=0, microsecond=0)
+    elif ndays:
+        start_date = datetime.now() - timedelta(days=ndays)
+        start_date = start_date.replace(hour=12, minute=0, second=0, microsecond=0)
+    else:
+        raise Exception('Error: either start date or N_days must be given')
+
+    if enddate:
+        end_date = datetime.strptime(enddate, '%d/%m/%y').replace(hour=12, minute=0, second=0, microsecond=0)
+    elif nread:
+        end_date = start_date + timedelta(days=nread)
+    else:
+        raise Exception('Error: either start date or N_days must be given')
+
+    start_str = start_date.strftime('%Y-%m-%d %H:%M:%S')
+    end_str = end_date.strftime('%Y-%m-%d %H:%M:%S')
+    date_range_str = (start_str, end_str)
+    return date_range_str
 
 def build_range_query1( table:str, rediskey_prefix:str, extra_condition=None,
                               startdate:str=None, enddate:str=None, N_days:int=1, N_read:int=1) -> str:

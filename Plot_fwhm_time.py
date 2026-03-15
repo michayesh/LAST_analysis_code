@@ -19,6 +19,7 @@ Arguments:
     plot_start : str, format dd/mm/yy  (optional) — start of the plotted sub-range
     plot_end   : str, format dd/mm/yy  (optional) — end of the plotted sub-range
                  If omitted, the full query range is plotted.
+Adapted from LAST_imageQuality.py by Claude Sonnet 4.6
 """
 
 import sys
