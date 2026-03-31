@@ -40,8 +40,8 @@ ARCSEC_PER_PIXEL = 1.25  # arcsec / pixel
 # 2-D histogram bin definitions
 FWHM_RANGE   = (2, 8)       # arcsec
 LIMMAG_RANGE = (16, 24)     # mag
-FWHM_BINS    = 200
-LIMMAG_BINS  = 200
+FWHM_BINS    = 100
+LIMMAG_BINS  = 100
 
 
 def _parse_bool(value: str, name: str) -> bool:
@@ -149,7 +149,8 @@ def plot_2d_histogram(vimg_df, time_span_stamp: tuple, outdir: str,
     ax_top.set_xlabel("FWHM [pixels]")
 
     ax.set_title(
-        f"Observation count per (FWHM, limmag) bin  —  {subset_label}\n{time_span_stamp[0]}",
+        f"Observation count per (FWHM, limmag) bin  —  {subset_label}\n"
+        f"{time_span_stamp[0]}  - {len(vimg_df)} observations",
         pad=30,
     )
     fig.tight_layout()

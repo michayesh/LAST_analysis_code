@@ -13,6 +13,8 @@ import pandas as pd
 import numpy as np
 import os, sys
 from datetime import datetime, timedelta
+
+from narwhals import DataFrame
 from openpyxl import load_workbook
 import json
 import math
@@ -35,6 +37,8 @@ import seaborn as sns
 # import clickhouse_connect
 from clickhouse_driver import Client
 import clickhouse_connect
+from streamlit.testing.v1.element_tree import Dataframe
+
 # from pydantic import BaseModel
 #------------------- end of imports
 # Constants used update if needed
@@ -43,7 +47,7 @@ OUTPUT_PATH = '/home/micha/Dropbox/WAO/LAST_analysis/output_dir'
 DATABASE_PATH = '/home/micha/Dropbox/WAO/LAST_analysis/databases'
 SCIENCE_COL_LIST = ['dateobs', 'mountnum', 'camnum', 'cropid', 'fieldid', 'subdir', 'ra', 'dec', 'fwhm', 'med_a',
                     'med_b', 'med_th', 'airmass',
-                    'ph_zp','limmag',
+                    'ph_zp','ph_rms','limmag','backmag',
                     'id_visit', 'temp_mnt', 'focus', 'diryear', 'dirmon', 'dirday', 'filetime']
 T0 = pd.Timestamp("1970-01-01T00:00:00")
 # The following colors are globally used for 4 traces (4 scopes) and for 10 mounts
@@ -300,6 +304,7 @@ def read_DB1( client, db_name:str, rediskey_prefix:str, extra:str=None,
         print('Here is the first line:\n',df.tail(1))
         print('\n')
     return df
+
 def visit_imagefn(imagedict:dict)->str:
     """
     Generate image file name for a specific image in euclid LAST coadd image database
@@ -337,7 +342,8 @@ def visit_imagefn(imagedict:dict)->str:
     fnparts.append(year)
     fnparts.append(month)
     fnparts.append(day+'.')
-    fnparts.append(f'{imagedict['filetime']:.3f}')
+    # fnparts.append(f'{imagedict['filetime']:.3f}')
+    fnparts.append(f'{imagedict['filetime']:s}')
     fnparts.append('_clear_')
     fnparts.append(f'{str(imagedict['fieldid']):s}')
     fnparts.append('_000_001_')
@@ -345,6 +351,81 @@ def visit_imagefn(imagedict:dict)->str:
     fnparts.append('_sci_coadd_Image_1.fits')
     imfn = ''.join(fnparts)
     return os.path.join(basepath, imfn)
+def visit_imagefn_df(vimg: pd.DataFrame) -> pd.DataFrame:
+    """
+    Generate image file paths for all rows in a vimg DataFrame of Euclid LAST coadd image database.
+    Parameters:
+        vimg: pd.DataFrame with the following columns:
+            mountnum  : int  - mount number
+            camnum    : int  - camera number
+            cropid    : int  - crop ID
+            fieldid   : int  - field ID
+            subdir    : str  - subdirectory
+            diryear   : int  - directory year
+            dirmon    : int  - directory month
+            dirday    : int  - directory day
+            filetime  : float - file time (formatted as fixed .3f)
+    Returns:
+        pd.DataFrame: the input DataFrame with an added 'filepath' column containing
+        the full path to each fits file:
+        /mnt/euclid/last/data/LAST.01.M.C/YY/MM/DD/proc/S/LAST.01.M.C_YYMMDD.FT_clear_F_000_001_Cr_sci_coadd_Image_1.fits
+    """
+
+    def _build_path(row: pd.Series) -> str:
+        pathprefix = r'/mnt/euclid/last/data/LAST.01.'
+
+        # try:
+        mount = f'{row["mountnum"]:02d}'
+        cam = f'{row["camnum"]:02d}'
+        subdir = row['subdir']
+        year = f'{row["diryear"]:4d}'
+        month = f'{row["dirmon"]:02d}'
+        day = f'{row["dirday"]:02d}'
+
+        basepath = os.path.join(
+            pathprefix + mount + '.' + cam,
+            year, month, day,
+            'proc',
+            subdir
+        )
+        # raw_filetime = str(row["filetime"])
+        # if raw_filetime.startswith('0') and '.' in raw_filetime:
+        #     filetime_str = raw_filetime  # preserve leading zeros as-is
+        # else:
+        #     filetime_str = f'{float(raw_filetime):.3f}'
+        fnparts = [
+            'LAST.01.',
+            mount + '.',
+            cam + '_',
+            year,
+            month,
+            day + '.',
+            # f'{row["filetime"]:.3f}',
+            f'{row["filetime"]:s}',
+            # filetime_str,
+            '_clear_',
+            f'{str(row["fieldid"]):s}',
+            '_000_001_',
+            f'{row["cropid"]:03d}',
+            '_sci_coadd_Image_1.fits'
+        ]
+
+        return os.path.join(basepath, ''.join(fnparts))
+
+        # except (ValueError, KeyError, TypeError) as e:
+        #     print(f"Error building path for row (index={row.name}): {e}")
+        #     print(row.to_string())
+        #     return 'no_dir'
+
+    vimg = vimg.copy()
+    vimg['filepath'] = vimg.apply(_build_path, axis=1)
+    '''
+        Calling .copy() before the assignment makes vimg an independent DataFrame, 
+        which both silences the warning and ensures the assignment is unambiguous.
+         The caller receives the updated copy via return vimg.
+         If vimg is a slice of a larger DataFrame, pandas can't guarantee the assignment propagates to the original.
+    '''
+    return vimg
 
 
 def read_visitDB( client, startdate:str=None, enddate:str=None, N_days:int=1, N_read:int=1)-> pd.DataFrame:
